@@ -15,6 +15,7 @@ import {
 import { ClaudeProvider } from "./providers/claude";
 import { CodexProvider } from "./providers/codex";
 import { abortAllChildren } from "./providers/common";
+import { AntigravityProvider } from "./providers/antigravity";
 import { UsageService } from "./usage-service";
 import { Popover, TrayManager } from "./window";
 
@@ -107,10 +108,42 @@ async function startApplication(): Promise<void> {
               error: null,
             }),
           },
+          {
+            id: "antigravity",
+            displayName: "Antigravity",
+            detect: async () => ({
+              provider: "antigravity",
+              status: "available",
+              executablePath: "/fake/agy",
+            }),
+            fetchUsage: async ({ now }) => ({
+              provider: "antigravity",
+              displayName: "Antigravity",
+              status: "ok",
+              plan: "Google AI Pro",
+              windows: [
+                ["gemini-session", "Gemini 5h", 12, 300],
+                ["gemini-weekly", "Gemini Weekly", 24, 10_080],
+                ["claude-gpt-session", "Claude/GPT 5h", 8, 300],
+                ["claude-gpt-weekly", "Claude/GPT Weekly", 31, 10_080],
+              ].map(([id, label, usedPercent, durationMinutes]) => ({
+                id: String(id),
+                label: String(label),
+                usedPercent: Number(usedPercent),
+                durationMinutes: Number(durationMinutes),
+                resetsAt: null,
+                resetDescription: null,
+              })),
+              updatedAt: now,
+              source: "cli",
+              error: null,
+            }),
+          },
         ]
       : [
           new ClaudeProvider(() => settings.get()),
           new CodexProvider(() => settings.get()),
+          new AntigravityProvider(() => settings.get()),
         ];
   const usage = new UsageService(providers, () => settings.get());
   const popover = new Popover();

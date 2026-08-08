@@ -1,4 +1,5 @@
 import type {
+  BuiltInProviderId,
   ProviderId,
   ProviderUsageSnapshot,
   TrayciSettings,
@@ -161,8 +162,8 @@ export class UsageService {
   private enabledProviders(): UsageProvider[] {
     const settings = this.getSettings();
     return this.providers.filter((provider) => {
-      if (provider.id !== "claude" && provider.id !== "codex") return true;
-      return settings.providers[provider.id].enabled;
+      const configured = settings.providers[provider.id as BuiltInProviderId];
+      return configured?.enabled ?? true;
     });
   }
 

@@ -56,7 +56,7 @@ async function executable(path: string): Promise<boolean> {
 }
 
 export async function resolveExecutable(
-  name: "claude" | "codex",
+  name: string,
   configured: string | null,
 ): Promise<string | null> {
   if (configured && (await executable(configured))) return configured;
@@ -135,6 +135,8 @@ export async function runPty(options: {
   executable: string;
   args?: string[];
   input: string;
+  writeDelayMs?: number;
+  completionDelayMs?: number;
   timeoutMs: number;
   signal: AbortSignal;
   complete: (output: string) => boolean;
@@ -177,14 +179,17 @@ export async function runPty(options: {
     );
     const writeTimer = setTimeout(
       () => terminal.write(`${options.input}\r`),
-      1_000,
+      options.writeDelayMs ?? 1_000,
     );
 
     options.signal.addEventListener("abort", abort, { once: true });
     terminal.onData((chunk) => {
       output = `${output}${chunk}`.slice(-1_000_000);
       if (!completionTimer && options.complete(stripTerminalCodes(output))) {
-        completionTimer = setTimeout(() => finish(), 600);
+        completionTimer = setTimeout(
+          () => finish(),
+          options.completionDelayMs ?? 600,
+        );
       }
     });
     terminal.onExit(({ exitCode }) => {
