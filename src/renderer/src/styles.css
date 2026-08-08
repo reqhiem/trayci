@@ -157,7 +157,7 @@ h1 {
   transition: background 0.12s ease;
 }
 .provider-row:hover,
-.provider-row[aria-pressed="true"] {
+.provider-row[aria-expanded="true"] {
   background: rgba(246, 244, 239, 0.14);
 }
 .provider-summary {

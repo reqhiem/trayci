@@ -20,11 +20,11 @@ Trayci is a local-first Linux system tray app that shows Claude Code, Codex, and
 - Detailed and compact views with per-provider drill-down
 - Automatic refresh, stale data handling, and a credential-free local cache
 - Configurable providers, polling, startup, and percentage display
-- Native `.deb` and `.AppImage` releases for Linux amd64
+- Native `.deb` and `.AppImage` releases for Linux amd64, and NSIS installer (`.exe`) for Windows
 
 ## Install
 
-Download the latest `.deb` or `.AppImage` from [GitHub Releases](https://github.com/reqhiem/trayci/releases).
+Download the latest `.deb`, `.AppImage`, or `.exe` installer from [GitHub Releases](https://github.com/reqhiem/trayci/releases).
 
 For the AppImage:
 
@@ -43,7 +43,7 @@ Trayci requires at least one authenticated provider. Antigravity reads the signe
 
 ## Development
 
-Requirements: Linux amd64, Node.js 22+, pnpm 9+, and at least one authenticated provider CLI.
+Requirements: Linux amd64 or Windows x64, Node.js 22+, pnpm 9+, and at least one authenticated provider CLI.
 
 ```bash
 pnpm install
@@ -59,6 +59,7 @@ pnpm typecheck
 pnpm test
 pnpm test:e2e
 pnpm dist:linux
+pnpm dist:win
 ```
 
 Diagnostics reuse the same provider code as the desktop app:
@@ -74,7 +75,7 @@ Lefthook formats staged files with Prettier before each commit. Run `pnpm exec l
 
 ## Releases
 
-Pull requests and changes to `main` run CI and produce downloadable Linux build artifacts. To publish a release, update the version in `package.json` and push the matching tag, for example `v0.2.0`; GitHub Actions builds and attaches both installers to the release.
+Pull requests and changes to `main` run CI and produce downloadable Linux and Windows build artifacts. To publish a release, update the version in `package.json` and push the matching tag, for example `v0.2.0`; GitHub Actions builds and attaches Linux and Windows installers to the release.
 
 ## Contributing
 
