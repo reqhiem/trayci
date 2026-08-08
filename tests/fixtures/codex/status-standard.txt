@@ -1,0 +1,3 @@
+Account status
+5h limit: 7% used, resets in 3h 20m
+Weekly limit: 12% used, resets in 5d 10h
