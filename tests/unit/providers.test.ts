@@ -20,6 +20,7 @@ import { vi } from "vitest";
 import {
   AntigravityProvider,
   normalizeAntigravityQuota,
+  parseAntigravityUsage,
 } from "../../src/main/providers/antigravity";
 import { DEFAULT_SETTINGS } from "../../src/shared/types";
 
@@ -108,6 +109,30 @@ describe("Codex usage", () => {
 });
 
 describe("Antigravity usage", () => {
+  it("parses the signed-in agy quota panel", () => {
+    const parsed = parseAntigravityUsage(
+      `Models & Quota
+       GEMINI MODELS
+       Weekly Limit Remaining 75.00% Resets in 4d 2h
+       Five Hour Limit Remaining 90.00% Resets in 2h 30m
+       CLAUDE AND GPT MODELS
+       Weekly Limit Remaining 60.00% Resets in 3d
+       Five Hour Limit Remaining 100.00% Quota available
+       G (Google AI Pro)`,
+      now,
+    );
+    expect(parsed.plan).toBe("Google AI Pro");
+    expect(
+      parsed.windows.map(({ id, usedPercent }) => [id, usedPercent]),
+    ).toEqual([
+      ["gemini-session", 10],
+      ["gemini-weekly", 25],
+      ["claude-gpt-session", 0],
+      ["claude-gpt-weekly", 40],
+    ]);
+    expect(parsed.windows[0]?.resetsAt).toBe(now + 150 * 60_000);
+  });
+
   it("normalizes remaining quota and deduplicates equivalent buckets", () => {
     const windows = normalizeAntigravityQuota({
       buckets: [
@@ -177,7 +202,10 @@ describe("Antigravity usage", () => {
         ),
       );
     try {
-      const provider = new AntigravityProvider(() => DEFAULT_SETTINGS);
+      const provider = new AntigravityProvider(
+        () => DEFAULT_SETTINGS,
+        async () => null,
+      );
       expect((await provider.detect()).status).toBe("available");
       const snapshot = await provider.fetchUsage({
         signal: new AbortController().signal,
@@ -194,6 +222,7 @@ describe("Antigravity usage", () => {
       ]);
     } finally {
       fetchMock.mockRestore();
+      abortAllChildren();
       if (previousHome === undefined) delete process.env.GEMINI_CLI_HOME;
       else process.env.GEMINI_CLI_HOME = previousHome;
       await rm(home, { recursive: true, force: true });

@@ -39,7 +39,7 @@ For Debian or Ubuntu:
 sudo apt install ./trayci_*_amd64.deb
 ```
 
-Trayci requires at least one authenticated provider. Antigravity follows Orca ADE's Google Code Assist quota path and reuses `~/.gemini/oauth_creds.json`; an installed Gemini CLI is needed to refresh an expired OAuth token.
+Trayci requires at least one authenticated provider. Antigravity reads the signed-in `agy` CLI's `/usage` panel and falls back to Orca ADE's Google Code Assist quota path when Gemini OAuth credentials are available.
 
 ## Development
 

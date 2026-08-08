@@ -9,7 +9,14 @@ import type {
   UsageProvider,
   UsageWindow,
 } from "../../shared/types";
-import { clamp, ProviderError, toEpochMs } from "./common";
+import {
+  clamp,
+  ProviderError,
+  resetFromText,
+  resolveExecutable,
+  runPty,
+  toEpochMs,
+} from "./common";
 import { extractGeminiOAuthClient } from "./google-oauth";
 
 const API_TIMEOUT_MS = 10_000;
@@ -144,6 +151,85 @@ export function normalizeAntigravityQuota(value: unknown): UsageWindow[] {
   }));
 }
 
+function parseQuotaGroup(
+  output: string,
+  heading: RegExp,
+  nextHeading: RegExp | null,
+  id: string,
+  label: string,
+  now: number,
+): UsageWindow[] {
+  const start = output.search(heading);
+  if (start < 0) return [];
+  const remainder = output.slice(start);
+  const next = nextHeading ? remainder.slice(1).search(nextHeading) : -1;
+  const section = (next < 0 ? remainder : remainder.slice(0, next + 1)).replace(
+    /\s+/g,
+    " ",
+  );
+  const patterns: Array<[string, string, number, RegExp]> = [
+    [
+      "session",
+      "5h",
+      300,
+      /Five Hour Limit Remaining[^%]{0,200}?(\d+(?:\.\d+)?)%(.{0,160})/i,
+    ],
+    [
+      "weekly",
+      "Weekly",
+      10_080,
+      /Weekly Limit Remaining[^%]{0,200}?(\d+(?:\.\d+)?)%(.{0,160}?)(?=Five Hour Limit Remaining|$)/i,
+    ],
+  ];
+  return patterns.flatMap(
+    ([windowId, windowLabel, durationMinutes, pattern]) => {
+      const match = section.match(pattern);
+      if (!match) return [];
+      const resetDescription =
+        match[2]?.match(/resets?\s+(?:in\s+)?[^.]{1,80}/i)?.[0] ?? null;
+      return [
+        {
+          id: `${id}-${windowId}`,
+          label: `${label} ${windowLabel}`,
+          usedPercent: clamp(100 - Number(match[1])),
+          durationMinutes,
+          resetsAt: resetDescription
+            ? resetFromText(resetDescription, now)
+            : null,
+          resetDescription,
+        },
+      ];
+    },
+  );
+}
+
+export function parseAntigravityUsage(
+  output: string,
+  now: number,
+): { windows: UsageWindow[]; plan: string | null } {
+  return {
+    windows: [
+      ...parseQuotaGroup(
+        output,
+        /GEMINI MODELS/i,
+        /CLAUDE AND GPT MODELS/i,
+        "gemini",
+        "Gemini",
+        now,
+      ),
+      ...parseQuotaGroup(
+        output,
+        /CLAUDE AND GPT MODELS/i,
+        null,
+        "claude-gpt",
+        "Claude/GPT",
+        now,
+      ),
+    ],
+    plan: output.match(/\((Google AI [^)]+)\)/i)?.[1] ?? null,
+  };
+}
+
 async function apiRequest(
   path: string,
   accessToken: string,
@@ -223,37 +309,83 @@ export class AntigravityProvider implements UsageProvider {
   readonly id = "antigravity" as const;
   readonly displayName = "Antigravity";
 
-  constructor(private readonly getSettings: () => TrayciSettings) {}
+  constructor(
+    private readonly getSettings: () => TrayciSettings,
+    private readonly resolveCli: typeof resolveExecutable = resolveExecutable,
+  ) {}
 
   async detect(): Promise<ProviderDetection> {
+    const executablePath = await this.resolveCli(
+      "agy",
+      this.getSettings().providers.antigravity.executablePath,
+    );
     return {
       provider: this.id,
-      status: (await readCredentials()) ? "available" : "not-authenticated",
-      executablePath: null,
+      status:
+        executablePath || (await readCredentials())
+          ? "available"
+          : "not-installed",
+      executablePath,
     };
   }
 
   async fetchUsage(context: UsageFetchContext): Promise<ProviderUsageSnapshot> {
+    const detection = await this.detect();
+    let cliError: unknown;
+    if (detection.executablePath) {
+      try {
+        const output = await runPty({
+          executable: detection.executablePath,
+          input: "/usage",
+          writeDelayMs: 2_500,
+          completionDelayMs: 1_200,
+          timeoutMs: 20_000,
+          signal: context.signal,
+          complete: (value) =>
+            (value.match(/Limit Remaining[\s\S]{0,200}?\d+(?:\.\d+)?%/gi)
+              ?.length ?? 0) >= 4,
+        });
+        const parsed = parseAntigravityUsage(output, context.now);
+        if (parsed.windows.length === 4)
+          return {
+            provider: this.id,
+            displayName: this.displayName,
+            status: "ok",
+            plan: parsed.plan,
+            windows: parsed.windows,
+            updatedAt: context.now,
+            source: "cli",
+            error: null,
+          };
+        cliError = new ProviderError(
+          "parse",
+          "Could not parse Antigravity usage",
+        );
+      } catch (error) {
+        if (context.signal.aborted)
+          throw new ProviderError("aborted", "Cancelled");
+        cliError = error;
+      }
+    }
+
     const credentials = await readCredentials();
-    if (!credentials)
-      throw new ProviderError(
-        "not-authenticated",
-        "Google OAuth credentials not found",
-      );
-    const executable = this.getSettings().providers.antigravity.executablePath;
+    if (!credentials) {
+      if (cliError) throw cliError;
+      throw new ProviderError("not-installed", "Antigravity CLI not detected");
+    }
     let accessToken =
       credentials.expiry_date > context.now
         ? credentials.access_token
         : await refreshAccessToken(
             credentials.refresh_token,
-            executable,
+            null,
             context.signal,
           );
     let response = await fetchQuota(accessToken, context.signal);
     if (response.status === 401 && accessToken === credentials.access_token) {
       accessToken = await refreshAccessToken(
         credentials.refresh_token,
-        executable,
+        null,
         context.signal,
       );
       response = await fetchQuota(accessToken, context.signal);
