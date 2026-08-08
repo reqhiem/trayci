@@ -22,7 +22,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "pnpm build && playwright test",
-    "dist:linux": "pnpm build && electron-builder --linux AppImage deb --publish never"
+    "dist:linux": "pnpm build && electron-builder --linux AppImage deb --publish never",
+    "dist:win": "pnpm build && electron-builder --win nsis --publish never"
   },
   "dependencies": {
     "@fontsource-variable/space-grotesk": "^5.3.0",
@@ -79,6 +80,18 @@
     },
     "deb": {
       "artifactName": "trayci_${version}_amd64.${ext}"
+    },
+    "win": {
+      "executableName": "trayci",
+      "icon": "resources/icons",
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Trayci-Setup-${version}.${ext}"
     }
   },
   "engines": {

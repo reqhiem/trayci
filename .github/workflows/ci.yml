@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  build-linux:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -31,4 +31,22 @@ jobs:
           path: |
             dist/*.AppImage
             dist/*.deb
+          if-no-files-found: error
+
+  build-win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm dist:win
+      - uses: actions/upload-artifact@v7
+        with:
+          name: trayci-win-${{ github.sha }}
+          path: |
+            dist/*.exe
           if-no-files-found: error
