@@ -32,6 +32,13 @@ function displayPercent(
   return Math.round(mode === "used" ? used : 100 - used);
 }
 
+function denseLabel(window: UsageWindow): string {
+  const cadence = window.durationMinutes === 10_080 ? "wk" : "5h";
+  if (window.id.startsWith("gemini-")) return `Gem ${cadence}`;
+  if (window.id.startsWith("claude-gpt-")) return `C/G ${cadence}`;
+  return window.id === "weekly" ? "wk" : window.label;
+}
+
 function ProviderIcon({
   provider,
 }: {
@@ -82,7 +89,7 @@ function Metric({
   return (
     <div className={dense ? "metric metric-dense" : "metric"}>
       <div className="metric-copy">
-        <strong>{dense && window.id === "weekly" ? "wk" : window.label}</strong>
+        <strong>{dense ? denseLabel(window) : window.label}</strong>
       </div>
       <div className="metric-line">
         <div
@@ -131,22 +138,18 @@ function ProviderRow({
     0,
     Math.floor((now - snapshot.updatedAt) / 60_000),
   );
+  const updated = ageMinutes ? `Updated ${ageMinutes}m ago` : "Updated now";
   return (
     <button
       className={`provider-row provider-${snapshot.status}`}
       type="button"
       aria-pressed={selected}
+      aria-busy={snapshot.status === "fetching"}
       onClick={onSelect}
     >
       <div className="provider-summary">
         <ProviderIcon provider={snapshot.provider} />
         <strong>{snapshot.displayName}</strong>
-        {snapshot.status === "fetching" ? (
-          <span className="status pulse">Refreshing</span>
-        ) : null}
-        {snapshot.status === "stale" ? (
-          <span className="status">Updated {ageMinutes}m ago</span>
-        ) : null}
         {settings.displayMode === "compact" && tightest ? (
           <span className="compact-value">
             {tightest.resetsAt
@@ -156,17 +159,23 @@ function ProviderRow({
               {displayPercent(tightest, settings.percentageDisplay)}%
             </strong>
           </span>
+        ) : snapshot.status === "stale" ? (
+          <span className="status">{updated}</span>
         ) : tightest?.resetsAt ? (
           <span className="reset-summary">
             Resets in {formatResetCountdown(tightest.resetsAt, now)}
           </span>
+        ) : snapshot.windows.length ? (
+          <span className="status">{updated}</span>
         ) : null}
         <span className="chevron" aria-hidden="true">
           ›
         </span>
       </div>
       {settings.displayMode === "detailed" && snapshot.windows.length ? (
-        <div className="inline-metrics">
+        <div
+          className={`inline-metrics${snapshot.windows.length > 2 ? " inline-metrics-grid" : ""}`}
+        >
           {snapshot.windows.map((window) => (
             <Metric
               key={window.id}
@@ -180,7 +189,9 @@ function ProviderRow({
       ) : null}
       {!snapshot.windows.length ? (
         <span className="provider-message">
-          {snapshot.error ?? "Usage unavailable"}
+          {snapshot.status === "fetching"
+            ? "Loading usage…"
+            : (snapshot.error ?? "Usage unavailable")}
         </span>
       ) : null}
     </button>

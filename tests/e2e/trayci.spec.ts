@@ -14,6 +14,16 @@ test("renders usage, switches density and persists settings", async () => {
     await expect(window.getByRole("heading", { name: "Usage" })).toBeVisible();
     await expect(window.getByRole("button", { name: /Claude/ })).toBeVisible();
     await expect(window.getByRole("button", { name: /Codex/ })).toBeVisible();
+    await expect(
+      window.getByRole("button", { name: /Antigravity/ }),
+    ).toBeVisible();
+    await expect(window.getByText("Gem 5h")).toBeVisible();
+    await expect(window.getByText("C/G wk")).toBeVisible();
+    expect(
+      await window
+        .locator(".inline-metrics-grid")
+        .evaluate((element) => element.scrollWidth <= element.clientWidth),
+    ).toBe(true);
     await expect(window.getByText("wk").first()).toBeVisible();
     await expect
       .poll(() =>
@@ -28,7 +38,7 @@ test("renders usage, switches density and persists settings", async () => {
         ({ BrowserWindow }) =>
           BrowserWindow.getAllWindows()[0]?.getContentSize()[1],
       ),
-    ).toBeLessThan(300);
+    ).toBeLessThan(400);
     await window.getByRole("button", { name: /Claude/ }).click();
     await expect(window.getByLabel("Claude details")).toBeVisible();
     await expect
