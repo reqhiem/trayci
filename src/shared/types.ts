@@ -1,24 +1,11 @@
 export type ProviderId = "claude" | "codex" | `plugin:${string}`;
 export type ProviderDetectionStatus =
-  | "available"
-  | "not-installed"
-  | "not-authenticated"
-  | "unknown";
+  "available" | "not-installed" | "not-authenticated" | "unknown";
 export type UsageStatus =
-  | "idle"
-  | "fetching"
-  | "ok"
-  | "stale"
-  | "error"
-  | "unavailable";
+  "idle" | "fetching" | "ok" | "stale" | "error" | "unavailable";
 export type UsageSource = "oauth" | "rpc" | "api" | "cli" | "cache";
 export type UsageFetchReason =
-  | "startup"
-  | "manual"
-  | "poll"
-  | "resume"
-  | "popover-open"
-  | "retry";
+  "startup" | "manual" | "poll" | "resume" | "popover-open" | "retry";
 
 export type UsageWindow = {
   id: string;
@@ -73,7 +60,10 @@ export type TrayciSettings = {
   pollIntervalMinutes: number;
   displayMode: "detailed" | "compact";
   percentageDisplay: "used" | "remaining";
-  providers: Record<"claude" | "codex", { enabled: boolean; executablePath: string | null }>;
+  providers: Record<
+    "claude" | "codex",
+    { enabled: boolean; executablePath: string | null }
+  >;
 };
 
 export type TrayciSettingsPatch = Partial<
@@ -94,8 +84,8 @@ export const DEFAULT_SETTINGS: TrayciSettings = {
   percentageDisplay: "used",
   providers: {
     claude: { enabled: true, executablePath: null },
-    codex: { enabled: true, executablePath: null }
-  }
+    codex: { enabled: true, executablePath: null },
+  },
 };
 
 export type TrayciApi = {
@@ -110,6 +100,7 @@ export type TrayciApi = {
   };
   app: {
     hidePopover(): Promise<void>;
+    resizePopover(width: number, height: number): Promise<void>;
     quit(): Promise<void>;
   };
 };

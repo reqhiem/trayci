@@ -5,5 +5,6 @@ export const IPC = {
   settingsGet: "settings:get",
   settingsUpdate: "settings:update",
   appHide: "app:hide-popover",
-  appQuit: "app:quit"
+  appResize: "app:resize-popover",
+  appQuit: "app:quit",
 } as const;

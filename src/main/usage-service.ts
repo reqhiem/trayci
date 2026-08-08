@@ -4,7 +4,7 @@ import type {
   TrayciSettings,
   UsageFetchReason,
   UsageProvider,
-  UsageState
+  UsageState,
 } from "../shared/types";
 import { log } from "./logger";
 import { CacheRepository } from "./persistence";
@@ -16,7 +16,11 @@ const BACKOFF_MS = [30_000, 60_000, 120_000, 300_000, 900_000];
 
 type Listener = (state: UsageState) => void;
 
-function emptySnapshot(provider: UsageProvider, status: ProviderUsageSnapshot["status"], error: string | null): ProviderUsageSnapshot {
+function emptySnapshot(
+  provider: UsageProvider,
+  status: ProviderUsageSnapshot["status"],
+  error: string | null,
+): ProviderUsageSnapshot {
   return {
     provider: provider.id,
     displayName: provider.displayName,
@@ -25,19 +29,25 @@ function emptySnapshot(provider: UsageProvider, status: ProviderUsageSnapshot["s
     windows: [],
     updatedAt: Date.now(),
     source: null,
-    error
+    error,
   };
 }
 
 function publicError(error: unknown): string {
   if (!(error instanceof ProviderError)) return "Usage unavailable";
   switch (error.kind) {
-    case "not-installed": return "CLI not detected";
-    case "not-authenticated": return "Not signed in";
-    case "rate-limited": return "Temporarily rate limited";
-    case "timeout": return "Provider timed out";
-    case "parse": return "Provider response changed";
-    default: return "Usage unavailable";
+    case "not-installed":
+      return "CLI not detected";
+    case "not-authenticated":
+      return "Not signed in";
+    case "rate-limited":
+      return "Temporarily rate limited";
+    case "timeout":
+      return "Provider timed out";
+    case "parse":
+      return "Provider response changed";
+    default:
+      return "Usage unavailable";
   }
 }
 
@@ -46,7 +56,7 @@ export class UsageService {
     providers: {},
     isRefreshing: false,
     lastRefreshStartedAt: null,
-    lastRefreshCompletedAt: null
+    lastRefreshCompletedAt: null,
   };
   private readonly listeners = new Set<Listener>();
   private readonly failures = new Map<ProviderId, number>();
@@ -60,7 +70,10 @@ export class UsageService {
   constructor(
     private readonly providers: UsageProvider[],
     private readonly getSettings: () => TrayciSettings,
-    private readonly cache: Pick<CacheRepository, "load" | "save"> = new CacheRepository()
+    private readonly cache: Pick<
+      CacheRepository,
+      "load" | "save"
+    > = new CacheRepository(),
   ) {}
 
   async start(): Promise<void> {
@@ -68,7 +81,9 @@ export class UsageService {
     const cached = await this.cache.load();
     const enabled = this.enabledProviders();
     this.state.providers = Object.fromEntries(
-      enabled.flatMap((provider) => cached[provider.id] ? [[provider.id, cached[provider.id]]] : [])
+      enabled.flatMap((provider) =>
+        cached[provider.id] ? [[provider.id, cached[provider.id]]] : [],
+      ),
     );
     this.emit();
     await this.refreshAll("startup");
@@ -115,17 +130,28 @@ export class UsageService {
 
   async refreshProvider(
     providerId: ProviderId,
-    reason: UsageFetchReason = "manual"
+    reason: UsageFetchReason = "manual",
   ): Promise<ProviderUsageSnapshot> {
-    const provider = this.providers.find((candidate) => candidate.id === providerId);
+    const provider = this.providers.find(
+      (candidate) => candidate.id === providerId,
+    );
     if (!provider) throw new Error(`Unknown provider: ${providerId}`);
-    return this.fetchProvider(provider, reason, Date.now(), new AbortController().signal);
+    return this.fetchProvider(
+      provider,
+      reason,
+      Date.now(),
+      new AbortController().signal,
+    );
   }
 
   settingsChanged(): void {
-    const enabled = new Set(this.enabledProviders().map((provider) => provider.id));
+    const enabled = new Set(
+      this.enabledProviders().map((provider) => provider.id),
+    );
     this.state.providers = Object.fromEntries(
-      Object.entries(this.state.providers).filter(([id]) => enabled.has(id as ProviderId))
+      Object.entries(this.state.providers).filter(([id]) =>
+        enabled.has(id as ProviderId),
+      ),
     );
     this.emit();
     this.schedule();
@@ -143,21 +169,36 @@ export class UsageService {
   private async performRefresh(reason: UsageFetchReason): Promise<UsageState> {
     const startedAt = Date.now();
     this.controller = new AbortController();
-    this.state = { ...this.state, isRefreshing: true, lastRefreshStartedAt: startedAt };
+    this.state = {
+      ...this.state,
+      isRefreshing: true,
+      lastRefreshStartedAt: startedAt,
+    };
     this.emit();
     const providers = this.enabledProviders().filter(
-      (provider) => reason === "manual" || (this.nextRetry.get(provider.id) ?? 0) <= startedAt
+      (provider) =>
+        reason === "manual" ||
+        (this.nextRetry.get(provider.id) ?? 0) <= startedAt,
     );
     await Promise.allSettled(
-      providers.map((provider) => this.fetchProvider(provider, reason, startedAt, this.controller!.signal))
+      providers.map((provider) =>
+        this.fetchProvider(
+          provider,
+          reason,
+          startedAt,
+          this.controller!.signal,
+        ),
+      ),
     );
     this.state = {
       ...this.state,
       isRefreshing: false,
-      lastRefreshCompletedAt: Date.now()
+      lastRefreshCompletedAt: Date.now(),
     };
     this.controller = null;
-    await this.cache.save(this.state.providers).catch(() => log("warn", "cache_write_failed"));
+    await this.cache
+      .save(this.state.providers)
+      .catch(() => log("warn", "cache_write_failed"));
     this.emit();
     this.schedule();
     return this.getState();
@@ -167,7 +208,7 @@ export class UsageService {
     provider: UsageProvider,
     reason: UsageFetchReason,
     now: number,
-    signal: AbortSignal
+    signal: AbortSignal,
   ): Promise<ProviderUsageSnapshot> {
     const previous = this.state.providers[provider.id];
     this.state.providers[provider.id] = previous
@@ -184,35 +225,47 @@ export class UsageService {
         provider: provider.id,
         status: "ok",
         durationMs: Math.round(performance.now() - started),
-        source: snapshot.source
+        source: snapshot.source,
       });
       this.emit();
       return snapshot;
     } catch (error) {
-      if (error instanceof ProviderError && error.kind === "aborted") throw error;
+      if (error instanceof ProviderError && error.kind === "aborted")
+        throw error;
       const message = publicError(error);
-      const definitive = error instanceof ProviderError && ["not-installed", "not-authenticated"].includes(error.kind);
+      const definitive =
+        error instanceof ProviderError &&
+        ["not-installed", "not-authenticated"].includes(error.kind);
       if (definitive) {
         this.failures.delete(provider.id);
         this.nextRetry.delete(provider.id);
       } else {
         const count = (this.failures.get(provider.id) ?? 0) + 1;
         this.failures.set(provider.id, count);
-        const retryAt = error instanceof ProviderError && error.retryAt
-          ? error.retryAt
-          : now + BACKOFF_MS[Math.min(count - 1, BACKOFF_MS.length - 1)]!;
+        const retryAt =
+          error instanceof ProviderError && error.retryAt
+            ? error.retryAt
+            : now + BACKOFF_MS[Math.min(count - 1, BACKOFF_MS.length - 1)]!;
         this.nextRetry.set(provider.id, retryAt);
       }
       const age = previous ? now - previous.updatedAt : Infinity;
-      const snapshot = previous && previous.windows.length && !definitive && age <= MAX_STALE_RETENTION_MS
-        ? { ...previous, status: "stale" as const, error: message }
-        : emptySnapshot(provider, definitive ? "unavailable" : "error", message);
+      const snapshot =
+        previous &&
+        previous.windows.length &&
+        !definitive &&
+        age <= MAX_STALE_RETENTION_MS
+          ? { ...previous, status: "stale" as const, error: message }
+          : emptySnapshot(
+              provider,
+              definitive ? "unavailable" : "error",
+              message,
+            );
       this.state.providers[provider.id] = snapshot;
       log("warn", "provider_refresh", {
         provider: provider.id,
         status: snapshot.status,
         kind: error instanceof ProviderError ? error.kind : "unknown",
-        durationMs: Math.round(performance.now() - started)
+        durationMs: Math.round(performance.now() - started),
       });
       this.emit();
       return snapshot;
@@ -223,13 +276,18 @@ export class UsageService {
     if (this.timer) clearTimeout(this.timer);
     if (this.stopped) return;
     const now = Date.now();
-    const pollAt = (this.state.lastRefreshCompletedAt ?? now) + this.getSettings().pollIntervalMinutes * 60_000;
+    const pollAt =
+      (this.state.lastRefreshCompletedAt ?? now) +
+      this.getSettings().pollIntervalMinutes * 60_000;
     const retryAt = Math.min(...this.nextRetry.values(), Infinity);
     const nextAt = Math.min(pollAt, retryAt);
-    this.timer = setTimeout(() => {
-      const reason = retryAt <= Date.now() ? "retry" : "poll";
-      void this.refreshAll(reason);
-    }, Math.max(1_000, nextAt - now));
+    this.timer = setTimeout(
+      () => {
+        const reason = retryAt <= Date.now() ? "retry" : "poll";
+        void this.refreshAll(reason);
+      },
+      Math.max(1_000, nextAt - now),
+    );
     this.timer.unref();
   }
 
