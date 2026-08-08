@@ -158,7 +158,7 @@ function validatePatch(patch: TrayciSettingsPatch): void {
     if (
       !object(patch.providers) ||
       Object.keys(patch.providers).some(
-        (key) => key !== "claude" && key !== "codex",
+        (key) => !Object.hasOwn(DEFAULT_SETTINGS.providers, key),
       )
     ) {
       throw new TypeError("Invalid provider settings");
@@ -204,6 +204,10 @@ export function mergeSettings(
     providers: {
       claude: { ...current.providers.claude, ...patch.providers?.claude },
       codex: { ...current.providers.codex, ...patch.providers?.codex },
+      antigravity: {
+        ...current.providers.antigravity,
+        ...patch.providers?.antigravity,
+      },
     },
   };
 }

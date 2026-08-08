@@ -9,6 +9,7 @@ describe("settings validation", () => {
     });
     expect(settings.providers.claude.enabled).toBe(false);
     expect(settings.providers.codex.enabled).toBe(true);
+    expect(settings.providers.antigravity.enabled).toBe(true);
   });
 
   it("rejects invalid intervals and executable paths", () => {

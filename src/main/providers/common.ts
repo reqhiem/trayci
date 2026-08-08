@@ -56,7 +56,7 @@ async function executable(path: string): Promise<boolean> {
 }
 
 export async function resolveExecutable(
-  name: "claude" | "codex",
+  name: string,
   configured: string | null,
 ): Promise<string | null> {
   if (configured && (await executable(configured))) return configured;

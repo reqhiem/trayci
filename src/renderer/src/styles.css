@@ -195,6 +195,13 @@ h1 {
 .codex-icon {
   color: var(--paper);
 }
+.antigravity-icon {
+  color: #7da7ff;
+}
+.antigravity-icon svg {
+  fill: currentColor;
+  stroke-width: 0;
+}
 .codex-icon svg {
   width: 13px;
   height: 13px;

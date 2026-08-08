@@ -1,4 +1,5 @@
-export type ProviderId = "claude" | "codex" | `plugin:${string}`;
+export type BuiltInProviderId = "claude" | "codex" | "antigravity";
+export type ProviderId = BuiltInProviderId | `plugin:${string}`;
 export type ProviderDetectionStatus =
   "available" | "not-installed" | "not-authenticated" | "unknown";
 export type UsageStatus =
@@ -61,7 +62,7 @@ export type TrayciSettings = {
   displayMode: "detailed" | "compact";
   percentageDisplay: "used" | "remaining";
   providers: Record<
-    "claude" | "codex",
+    BuiltInProviderId,
     { enabled: boolean; executablePath: string | null }
   >;
 };
@@ -70,8 +71,9 @@ export type TrayciSettingsPatch = Partial<
   Omit<TrayciSettings, "schemaVersion" | "providers">
 > & {
   providers?: Partial<{
-    claude: Partial<TrayciSettings["providers"]["claude"]>;
-    codex: Partial<TrayciSettings["providers"]["codex"]>;
+    [Provider in BuiltInProviderId]: Partial<
+      TrayciSettings["providers"][Provider]
+    >;
   }>;
 };
 
@@ -85,6 +87,7 @@ export const DEFAULT_SETTINGS: TrayciSettings = {
   providers: {
     claude: { enabled: true, executablePath: null },
     codex: { enabled: true, executablePath: null },
+    antigravity: { enabled: true, executablePath: null },
   },
 };
 

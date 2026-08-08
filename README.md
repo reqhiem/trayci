@@ -4,7 +4,7 @@
 
 <h1 align="center">Trayci</h1>
 
-<p align="center">Claude Code and Codex usage, one click away.</p>
+<p align="center">Claude Code, Codex, and Antigravity usage, one click away.</p>
 
 <p align="center">
   <a href="https://github.com/reqhiem/trayci/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/reqhiem/trayci/actions/workflows/ci.yml/badge.svg"></a>
@@ -12,11 +12,11 @@
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/reqhiem/trayci"></a>
 </p>
 
-Trayci is a local-first Linux system tray app that shows Claude Code and Codex quota windows without interrupting your workflow. It reuses each provider CLI's existing authentication and never stores credentials.
+Trayci is a local-first Linux system tray app that shows Claude Code, Codex, and Google Antigravity quota windows without interrupting your workflow. It reuses each provider CLI's existing authentication and never stores credentials.
 
 ## Features
 
-- Claude Code and Codex usage in a compact tray popover
+- Claude Code, Codex, and Antigravity usage in a compact tray popover
 - Detailed and compact views with per-provider drill-down
 - Automatic refresh, stale data handling, and a credential-free local cache
 - Configurable providers, polling, startup, and percentage display
@@ -39,7 +39,7 @@ For Debian or Ubuntu:
 sudo apt install ./trayci_*_amd64.deb
 ```
 
-Trayci requires at least one installed and authenticated provider CLI: `claude` or `codex`.
+Trayci requires at least one authenticated provider. Antigravity follows Orca ADE's Google Code Assist quota path and reuses `~/.gemini/oauth_creds.json`; an installed Gemini CLI is needed to refresh an expired OAuth token.
 
 ## Development
 
@@ -66,6 +66,7 @@ Diagnostics reuse the same provider code as the desktop app:
 ```bash
 pnpm build
 pnpm cli -- usage --json
+pnpm cli -- usage antigravity
 pnpm cli -- doctor
 ```
 

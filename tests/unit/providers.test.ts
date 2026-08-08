@@ -1,5 +1,6 @@
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 import {
   normalizeClaudeUsage,
@@ -16,6 +17,11 @@ import {
   trackChild,
 } from "../../src/main/providers/common";
 import { vi } from "vitest";
+import {
+  AntigravityProvider,
+  normalizeAntigravityQuota,
+} from "../../src/main/providers/antigravity";
+import { DEFAULT_SETTINGS } from "../../src/shared/types";
 
 const now = Date.parse("2026-08-08T12:00:00Z");
 
@@ -98,6 +104,100 @@ describe("Codex usage", () => {
       ["session", 7],
       ["weekly", 12],
     ]);
+  });
+});
+
+describe("Antigravity usage", () => {
+  it("normalizes remaining quota and deduplicates equivalent buckets", () => {
+    const windows = normalizeAntigravityQuota({
+      buckets: [
+        {
+          remainingFraction: 0.75,
+          resetTime: "2026-08-08T13:00:00Z",
+          modelId: "gemini-2.5-pro-preview",
+        },
+        {
+          remainingFraction: 0.75,
+          resetTime: "2026-08-08T13:00:00Z",
+          modelId: "gemini-2.5-pro",
+        },
+        {
+          remainingFraction: 0.1,
+          resetTime: "2026-08-08T14:00:00Z",
+          modelId: "gemini-2.5-flash",
+        },
+        { remainingFraction: Number.NaN, resetTime: "later", modelId: "bad" },
+      ],
+    });
+    expect(
+      windows.map(({ label, usedPercent }) => [label, usedPercent]),
+    ).toEqual([
+      ["Pro", 25],
+      ["Flash", 90],
+    ]);
+    expect(windows[0]?.resetsAt).toBe(Date.parse("2026-08-08T13:00:00Z"));
+  });
+
+  it("rejects payloads without valid quota buckets", () => {
+    expect(
+      normalizeAntigravityQuota({ buckets: [{ modelId: "gemini" }] }),
+    ).toEqual([]);
+  });
+
+  it("fetches Code Assist quota with the existing OAuth session", async () => {
+    const home = await mkdtemp(join(tmpdir(), "trayci-antigravity-"));
+    const previousHome = process.env.GEMINI_CLI_HOME;
+    process.env.GEMINI_CLI_HOME = home;
+    await writeFile(
+      join(home, "oauth_creds.json"),
+      JSON.stringify({
+        access_token: "access-token",
+        refresh_token: "refresh-token",
+        expiry_date: now + 60_000,
+      }),
+    );
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ cloudaicompanionProject: "project-123" }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([
+            {
+              remainingFraction: 0.4,
+              resetTime: "2026-08-08T14:00:00Z",
+              modelId: "gemini-3.1-pro",
+            },
+          ]),
+          { status: 200 },
+        ),
+      );
+    try {
+      const provider = new AntigravityProvider(() => DEFAULT_SETTINGS);
+      expect((await provider.detect()).status).toBe("available");
+      const snapshot = await provider.fetchUsage({
+        signal: new AbortController().signal,
+        reason: "manual",
+        now,
+      });
+      expect(snapshot.windows[0]).toMatchObject({
+        label: "3.1 Pro",
+        usedPercent: 60,
+      });
+      expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+        "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
+        "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota",
+      ]);
+    } finally {
+      fetchMock.mockRestore();
+      if (previousHome === undefined) delete process.env.GEMINI_CLI_HOME;
+      else process.env.GEMINI_CLI_HOME = previousHome;
+      await rm(home, { recursive: true, force: true });
+    }
   });
 });
 

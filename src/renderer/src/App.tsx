@@ -46,6 +46,16 @@ function ProviderIcon({
       </span>
     );
   }
+  if (provider === "antigravity") {
+    return (
+      <span className="provider-icon antigravity-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24">
+          <path d="M12 2.8c.8 5.1 4.1 8.4 9.2 9.2-5.1.8-8.4 4.1-9.2 9.2-.8-5.1-4.1-8.4-9.2-9.2 5.1-.8 8.4-4.1 9.2-9.2Z" />
+          <path d="M18.2 3.2c.2 1.5 1.1 2.4 2.6 2.6-1.5.2-2.4 1.1-2.6 2.6-.2-1.5-1.1-2.4-2.6-2.6 1.5-.2 2.4-1.1 2.6-2.6Z" />
+        </svg>
+      </span>
+    );
+  }
   return (
     <span className="provider-icon codex-icon" aria-hidden="true">
       <svg viewBox="0 0 24 24">
@@ -293,6 +303,13 @@ function Settings({
           onChange={(enabled) => update({ providers: { codex: { enabled } } })}
           label="Codex"
         />
+        <Switch
+          checked={settings.providers.antigravity.enabled}
+          onChange={(enabled) =>
+            update({ providers: { antigravity: { enabled } } })
+          }
+          label="Antigravity"
+        />
       </section>
       <section className="settings-group">
         <h2>Display</h2>
@@ -405,6 +422,10 @@ export default function App(): React.JSX.Element {
       providers: {
         claude: { ...settings.providers.claude, ...patch.providers?.claude },
         codex: { ...settings.providers.codex, ...patch.providers?.codex },
+        antigravity: {
+          ...settings.providers.antigravity,
+          ...patch.providers?.antigravity,
+        },
       },
     });
     void window.trayci.settings

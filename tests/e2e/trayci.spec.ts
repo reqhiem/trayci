@@ -97,6 +97,9 @@ test("renders usage, switches density and persists settings", async () => {
       ),
     ).toEqual(beforeReopen);
     await window.getByRole("button", { name: "Settings" }).click();
+    await expect(
+      window.getByRole("switch", { name: "Antigravity" }),
+    ).toBeChecked();
     await window.getByRole("switch", { name: "Start Trayci on login" }).check();
     await expect(
       window.getByRole("switch", { name: "Start Trayci on login" }),

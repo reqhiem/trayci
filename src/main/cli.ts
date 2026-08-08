@@ -9,6 +9,7 @@ import { SettingsRepository } from "./persistence";
 import { ClaudeProvider } from "./providers/claude";
 import { CodexProvider } from "./providers/codex";
 import { abortAllChildren, activeChildCount } from "./providers/common";
+import { AntigravityProvider } from "./providers/antigravity";
 
 export function cliArguments(argv = process.argv): string[] {
   return argv
@@ -39,6 +40,7 @@ function providers(settings: SettingsRepository): UsageProvider[] {
   return [
     new ClaudeProvider(() => settings.get()),
     new CodexProvider(() => settings.get()),
+    new AntigravityProvider(() => settings.get()),
   ];
 }
 
@@ -85,8 +87,10 @@ export async function runCli(args: string[]): Promise<number> {
   }
 
   const providerArg = args.find(
-    (argument): argument is "claude" | "codex" =>
-      argument === "claude" || argument === "codex",
+    (argument): argument is "claude" | "codex" | "antigravity" =>
+      argument === "claude" ||
+      argument === "codex" ||
+      argument === "antigravity",
   );
   const selected = providerArg
     ? available.filter((provider) => provider.id === providerArg)
@@ -142,4 +146,4 @@ export async function runCli(args: string[]): Promise<number> {
 }
 
 export const isProviderId = (value: string): value is ProviderId =>
-  value === "claude" || value === "codex";
+  value === "claude" || value === "codex" || value === "antigravity";

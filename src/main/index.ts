@@ -15,6 +15,7 @@ import {
 import { ClaudeProvider } from "./providers/claude";
 import { CodexProvider } from "./providers/codex";
 import { abortAllChildren } from "./providers/common";
+import { AntigravityProvider } from "./providers/antigravity";
 import { UsageService } from "./usage-service";
 import { Popover, TrayManager } from "./window";
 
@@ -111,6 +112,7 @@ async function startApplication(): Promise<void> {
       : [
           new ClaudeProvider(() => settings.get()),
           new CodexProvider(() => settings.get()),
+          new AntigravityProvider(() => settings.get()),
         ];
   const usage = new UsageService(providers, () => settings.get());
   const popover = new Popover();
