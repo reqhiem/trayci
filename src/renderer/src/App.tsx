@@ -125,7 +125,7 @@ function ProviderRow({
     <button
       className={`provider-row provider-${snapshot.status}`}
       type="button"
-      aria-pressed={selected}
+      aria-expanded={selected}
       onClick={onSelect}
     >
       <div className="provider-summary">
@@ -332,6 +332,9 @@ export default function App(): React.JSX.Element {
   const [now, setNow] = useState(Date.now());
   const [error, setError] = useState<string | null>(null);
   const root = useRef<HTMLElement>(null);
+  const backButton = useRef<HTMLButtonElement>(null);
+  const settingsButton = useRef<HTMLButtonElement>(null);
+  const skipViewFocus = useRef(true);
 
   useEffect(() => {
     void Promise.all([
@@ -345,16 +348,29 @@ export default function App(): React.JSX.Element {
       .catch(() => setError("Trayci could not load its state."));
     const unsubscribe = window.trayci.usage.subscribe(setState);
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
-    const escape = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") void window.trayci.app.hidePopover();
-    };
-    window.addEventListener("keydown", escape);
     return () => {
       unsubscribe();
       window.clearInterval(timer);
-      window.removeEventListener("keydown", escape);
     };
   }, []);
+
+  useEffect(() => {
+    if (skipViewFocus.current) {
+      skipViewFocus.current = false;
+      return;
+    }
+    (view === "settings" ? backButton : settingsButton).current?.focus();
+  }, [view]);
+
+  useEffect(() => {
+    const escape = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      if (view === "usage" && selectedProvider) setSelectedProvider(null);
+      else void window.trayci.app.hidePopover();
+    };
+    window.addEventListener("keydown", escape);
+    return () => window.removeEventListener("keydown", escape);
+  }, [view, selectedProvider]);
 
   const providers = useMemo(
     () =>
@@ -427,6 +443,7 @@ export default function App(): React.JSX.Element {
         <header className="topbar">
           {view === "settings" ? (
             <button
+              ref={backButton}
               className="back-button"
               type="button"
               aria-label="Back to usage"
@@ -459,6 +476,7 @@ export default function App(): React.JSX.Element {
               </button>
             ) : null}
             <button
+              ref={settingsButton}
               className="icon-button settings-button"
               type="button"
               aria-label={view === "usage" ? "Settings" : "Back to usage"}
