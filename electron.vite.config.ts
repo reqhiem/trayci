@@ -7,9 +7,9 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
-        output: { format: "cjs", entryFileNames: "index.cjs" }
-      }
-    }
+        output: { format: "cjs", entryFileNames: "index.cjs" },
+      },
+    },
   },
-  renderer: { plugins: [react()] }
+  renderer: { plugins: [react()] },
 });

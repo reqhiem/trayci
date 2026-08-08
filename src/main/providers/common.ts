@@ -19,17 +19,20 @@ export class ProviderError extends Error {
   constructor(
     public readonly kind: FailureKind,
     message: string,
-    public readonly retryAt: number | null = null
+    public readonly retryAt: number | null = null,
   ) {
     super(message);
   }
 }
 
-export const clamp = (value: number): number => Math.min(100, Math.max(0, value));
+export const clamp = (value: number): number =>
+  Math.min(100, Math.max(0, value));
 
 export function asUsedPercent(value: unknown): number | null {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
-  return clamp(Math.round((value >= 0 && value <= 1 ? value * 100 : value) * 100) / 100);
+  return clamp(
+    Math.round((value >= 0 && value <= 1 ? value * 100 : value) * 100) / 100,
+  );
 }
 
 export function toEpochMs(value: unknown): number | null {
@@ -54,14 +57,17 @@ async function executable(path: string): Promise<boolean> {
 
 export async function resolveExecutable(
   name: "claude" | "codex",
-  configured: string | null
+  configured: string | null,
 ): Promise<string | null> {
   if (configured && (await executable(configured))) return configured;
   const candidates = [
-    ...(process.env.PATH ?? "").split(delimiter).filter(Boolean).map((dir) => join(dir, name)),
+    ...(process.env.PATH ?? "")
+      .split(delimiter)
+      .filter(Boolean)
+      .map((dir) => join(dir, name)),
     join(homedir(), ".local", "bin", name),
     join(homedir(), ".npm-global", "bin", name),
-    join(homedir(), ".bun", "bin", name)
+    join(homedir(), ".bun", "bin", name),
   ];
   for (const candidate of new Set(candidates)) {
     if (await executable(candidate)) return candidate;
@@ -103,8 +109,14 @@ export const activeChildCount = (): number => activeChildren.size;
 
 const ESCAPE = String.fromCharCode(27);
 const BELL = String.fromCharCode(7);
-const OSC_SEQUENCE = new RegExp(`${ESCAPE}\\][^${BELL}]*(?:${BELL}|${ESCAPE}\\\\)`, "g");
-const ANSI_SEQUENCE = new RegExp(`${ESCAPE}(?:\\[[0-?]*[ -/]*[@-~]|[@-_])`, "g");
+const OSC_SEQUENCE = new RegExp(
+  `${ESCAPE}\\][^${BELL}]*(?:${BELL}|${ESCAPE}\\\\)`,
+  "g",
+);
+const ANSI_SEQUENCE = new RegExp(
+  `${ESCAPE}(?:\\[[0-?]*[ -/]*[@-~]|[@-_])`,
+  "g",
+);
 
 export function stripTerminalCodes(value: string): string {
   return value
@@ -114,7 +126,7 @@ export function stripTerminalCodes(value: string): string {
     .split("")
     .filter((character) => {
       const code = character.charCodeAt(0);
-      return code === 9 || code === 10 || code >= 32 && code !== 127;
+      return code === 9 || code === 10 || (code >= 32 && code !== 127);
     })
     .join("");
 }
@@ -135,7 +147,7 @@ export async function runPty(options: {
       cols: 120,
       rows: 40,
       cwd,
-      env: { ...process.env, TERM: "xterm-256color" }
+      env: { ...process.env, TERM: "xterm-256color" },
     });
     const untrack = trackChild(terminal);
     let output = "";
@@ -161,9 +173,12 @@ export async function runPty(options: {
     const abort = (): void => finish(new ProviderError("aborted", "Cancelled"));
     const timeout = setTimeout(
       () => finish(new ProviderError("timeout", "CLI probe timed out")),
-      options.timeoutMs
+      options.timeoutMs,
     );
-    const writeTimer = setTimeout(() => terminal.write(`${options.input}\r`), 1_000);
+    const writeTimer = setTimeout(
+      () => terminal.write(`${options.input}\r`),
+      1_000,
+    );
 
     options.signal.addEventListener("abort", abort, { once: true });
     terminal.onData((chunk) => {
@@ -174,15 +189,26 @@ export async function runPty(options: {
     });
     terminal.onExit(({ exitCode }) => {
       if (options.complete(stripTerminalCodes(output))) finish();
-      else finish(new ProviderError("parse", `CLI exited before usage was available (${exitCode})`));
+      else
+        finish(
+          new ProviderError(
+            "parse",
+            `CLI exited before usage was available (${exitCode})`,
+          ),
+        );
     });
   });
 }
 
 export function resetFromText(text: string, now: number): number | null {
-  const duration = text.match(/(?:resets?\s+in\s+)?(?:(\d+)d)?\s*(?:(\d+)h)?\s*(?:(\d+)m)?/i);
+  const duration = text.match(
+    /(?:resets?\s+in\s+)?(?:(\d+)d)?\s*(?:(\d+)h)?\s*(?:(\d+)m)?/i,
+  );
   if (duration && duration[0].trim() && duration.slice(1).some(Boolean)) {
-    const minutes = Number(duration[1] ?? 0) * 1440 + Number(duration[2] ?? 0) * 60 + Number(duration[3] ?? 0);
+    const minutes =
+      Number(duration[1] ?? 0) * 1440 +
+      Number(duration[2] ?? 0) * 60 +
+      Number(duration[3] ?? 0);
     return now + minutes * 60_000;
   }
   return toEpochMs(text);
