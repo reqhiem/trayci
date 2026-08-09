@@ -303,6 +303,31 @@ function Settings({
         </label>
       </section>
       <section className="settings-group">
+        <h2>Notifications</h2>
+        {([80, 90, 95] as const).map((threshold) => (
+          <Switch
+            key={threshold}
+            checked={settings.notifications[`quota${threshold}`]}
+            onChange={(enabled) =>
+              update({
+                notifications: {
+                  ...settings.notifications,
+                  [`quota${threshold}`]: enabled,
+                },
+              })
+            }
+            label={`Quota reaches ${threshold}%`}
+          />
+        ))}
+        <Switch
+          checked={settings.notifications.reset}
+          onChange={(reset) =>
+            update({ notifications: { ...settings.notifications, reset } })
+          }
+          label="Quota reset completes"
+        />
+      </section>
+      <section className="settings-group">
         <h2>Providers</h2>
         <Switch
           checked={settings.providers.claude.enabled}

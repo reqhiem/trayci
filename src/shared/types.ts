@@ -61,6 +61,12 @@ export type TrayciSettings = {
   pollIntervalMinutes: number;
   displayMode: "detailed" | "compact";
   percentageDisplay: "used" | "remaining";
+  notifications: {
+    quota80: boolean;
+    quota90: boolean;
+    quota95: boolean;
+    reset: boolean;
+  };
   providers: Record<
     BuiltInProviderId,
     { enabled: boolean; executablePath: string | null }
@@ -84,6 +90,12 @@ export const DEFAULT_SETTINGS: TrayciSettings = {
   pollIntervalMinutes: 15,
   displayMode: "detailed",
   percentageDisplay: "used",
+  notifications: {
+    quota80: false,
+    quota90: false,
+    quota95: false,
+    reset: false,
+  },
   providers: {
     claude: { enabled: true, executablePath: null },
     codex: { enabled: true, executablePath: null },
