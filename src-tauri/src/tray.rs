@@ -3,13 +3,18 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     PhysicalPosition,
 };
+#[cfg(target_os = "linux")]
+use tauri::{
+    menu::{Menu, MenuItem},
+    Manager,
+};
 use trayci_core::{PercentageDisplay, TrayciSettings};
 
 pub const ID: &str = "trayci";
 
 pub fn create(app: &tauri::AppHandle) -> tauri::Result<()> {
     let icon = Image::from_bytes(include_bytes!("../../resources/icons/32x32.png"))?;
-    TrayIconBuilder::with_id(ID)
+    let builder = TrayIconBuilder::with_id(ID)
         .icon(icon)
         .tooltip("Trayci")
         .on_tray_icon_event(|tray, event| {
@@ -31,8 +36,29 @@ pub fn create(app: &tauri::AppHandle) -> tauri::Result<()> {
                 });
                 let _ = crate::popover::toggle(tray.app_handle(), position, center);
             }
-        })
-        .build(app)?;
+        });
+
+    #[cfg(target_os = "linux")]
+    let builder = {
+        // AppIndicator needs a menu to display the icon and does not emit tray click events.
+        let show = MenuItem::with_id(app, "show", "Show Trayci", true, None::<&str>)?;
+        let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+        let menu = Menu::with_items(app, &[&show, &quit])?;
+        builder
+            .menu(&menu)
+            .on_menu_event(|app, event| match event.id().as_ref() {
+                "show" => {
+                    if let Some(window) = app.get_webview_window(crate::popover::LABEL) {
+                        let position = window.cursor_position().unwrap_or_default();
+                        let _ = crate::popover::show(app, position, None);
+                    }
+                }
+                "quit" => app.exit(0),
+                _ => {}
+            })
+    };
+
+    builder.build(app)?;
     Ok(())
 }
 
