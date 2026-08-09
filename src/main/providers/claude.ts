@@ -15,14 +15,20 @@ import {
   resetFromText,
   resolveExecutable,
   runPty,
-  titleCase,
   toEpochMs,
 } from "./common";
 
 type ClaudeWindow = { utilization?: number; resets_at?: string | null };
+type ClaudeLimit = {
+  group?: string;
+  percent?: number;
+  resets_at?: string | null;
+  scope?: { model?: { display_name?: string | null } | null } | null;
+};
 type ClaudeUsage = Record<string, unknown> & {
   five_hour?: ClaudeWindow | null;
   seven_day?: ClaudeWindow | null;
+  limits?: ClaudeLimit[] | null;
 };
 
 const labels: Record<string, string> = {
@@ -60,15 +66,37 @@ async function readCredential(): Promise<{
   }
 }
 
-export function normalizeClaudeUsage(raw: ClaudeUsage): UsageWindow[] {
+// Per-model quotas live in `limits`; the top-level `seven_day_<model>` keys
+// that used to carry them are now always null.
+function limitWindow(limit: ClaudeLimit): UsageWindow | null {
+  const weekly = limit.group === "weekly";
+  if (!weekly && limit.group !== "session") return null;
+  const usedPercent = asUsedPercent(limit.percent);
+  if (usedPercent === null) return null;
+  const model = limit.scope?.model?.display_name;
+  return {
+    // Must match the ids parseClaudeUsage emits, or the CLI and OAuth paths
+    // render the same quota twice while a stale snapshot is still retained.
+    id: model
+      ? `${model.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-weekly`
+      : weekly
+        ? "weekly"
+        : "session",
+    label: model ?? (weekly ? "Weekly" : "5h"),
+    usedPercent,
+    durationMinutes: weekly ? 10_080 : 300,
+    resetsAt: toEpochMs(limit.resets_at),
+    resetDescription: null,
+  };
+}
+
+// Driven by `labels` rather than by the payload keys: unrecognised
+// `seven_day_*` keys would otherwise surface as windows named after internal
+// feature codenames the moment they stop being null.
+function legacyWindows(raw: ClaudeUsage): UsageWindow[] {
   const windows: UsageWindow[] = [];
-  for (const [key, value] of Object.entries(raw)) {
-    if (!(
-      key === "five_hour" ||
-      key === "seven_day" ||
-      key.startsWith("seven_day_")
-    ))
-      continue;
+  for (const [key, label] of Object.entries(labels)) {
+    const value = raw[key];
     if (!value || typeof value !== "object") continue;
     const window = value as ClaudeWindow;
     const usedPercent = asUsedPercent(window.utilization);
@@ -80,13 +108,20 @@ export function normalizeClaudeUsage(raw: ClaudeUsage): UsageWindow[] {
           : key === "seven_day"
             ? "weekly"
             : `${key.replace("seven_day_", "")}-weekly`,
-      label: labels[key] ?? titleCase(key.replace("seven_day_", "")),
+      label,
       usedPercent,
       durationMinutes: key === "five_hour" ? 300 : 10_080,
       resetsAt: toEpochMs(window.resets_at),
       resetDescription: null,
     });
   }
+  return windows;
+}
+
+export function normalizeClaudeUsage(raw: ClaudeUsage): UsageWindow[] {
+  const windows = raw.limits?.length
+    ? raw.limits.flatMap((limit) => limitWindow(limit) ?? [])
+    : legacyWindows(raw);
   const priority = (id: string): number =>
     id === "session" ? 0 : id === "weekly" ? 1 : 2;
   return windows.sort((a, b) => priority(a.id) - priority(b.id));

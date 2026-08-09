@@ -27,19 +27,65 @@ import { DEFAULT_SETTINGS } from "../../src/shared/types";
 const now = Date.parse("2026-08-08T12:00:00Z");
 
 describe("Claude usage", () => {
-  it("normalizes direct OAuth windows", () => {
+  it("normalizes model-scoped OAuth limits", () => {
     const windows = normalizeClaudeUsage({
-      five_hour: { utilization: 0.28, resets_at: "2026-08-08T14:00:00Z" },
-      seven_day: { utilization: 41, resets_at: null },
-      seven_day_fable: { utilization: 0.2, resets_at: null },
+      five_hour: { utilization: 4, resets_at: "2026-08-08T14:00:00Z" },
+      seven_day: { utilization: 29, resets_at: null },
+      seven_day_opus: null,
+      limits: [
+        {
+          group: "session",
+          percent: 4,
+          resets_at: "2026-08-08T14:00:00Z",
+          scope: null,
+        },
+        { group: "weekly", percent: 29, resets_at: null, scope: null },
+        {
+          group: "weekly",
+          percent: 20,
+          resets_at: null,
+          scope: { model: { display_name: "Fable" } },
+        },
+        { group: "monthly", percent: 99, resets_at: null, scope: null },
+      ],
+    });
+    expect(
+      windows.map(({ id, label, usedPercent }) => [id, label, usedPercent]),
+    ).toEqual([
+      ["session", "5h", 4],
+      ["weekly", "Weekly", 29],
+      ["fable-weekly", "Fable", 20],
+    ]);
+    expect(windows[0]?.resetsAt).toBe(Date.parse("2026-08-08T14:00:00Z"));
+    expect(windows[2]?.durationMinutes).toBe(10_080);
+  });
+
+  // Regression: utilization is a 0-100 percentage. Scaling values <= 1 as if
+  // they were fractions reported a freshly reset 1% session as 100%.
+  it("keeps low utilization on the reported percentage scale", () => {
+    expect(
+      normalizeClaudeUsage({
+        limits: [{ group: "session", percent: 1, resets_at: null }],
+      })[0]?.usedPercent,
+    ).toBe(1);
+    expect(
+      normalizeClaudeUsage({ five_hour: { utilization: 0.5 } })[0]?.usedPercent,
+    ).toBe(0.5);
+  });
+
+  it("falls back to top-level windows and ignores unlabelled keys", () => {
+    const windows = normalizeClaudeUsage({
+      five_hour: { utilization: 62, resets_at: null },
+      seven_day: { utilization: 31, resets_at: null },
+      seven_day_sonnet: { utilization: 12, resets_at: null },
+      seven_day_unrecognised: { utilization: 77, resets_at: null },
       extra_usage: { utilization: 99 },
     });
     expect(windows.map(({ id, usedPercent }) => [id, usedPercent])).toEqual([
-      ["session", 28],
-      ["weekly", 41],
-      ["fable-weekly", 20],
+      ["session", 62],
+      ["weekly", 31],
+      ["sonnet-weekly", 12],
     ]);
-    expect(windows[0]?.resetsAt).toBe(Date.parse("2026-08-08T14:00:00Z"));
   });
 
   it("parses PTY variants and remaining percentages", async () => {
