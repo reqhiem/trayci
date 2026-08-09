@@ -77,12 +77,14 @@ describe("Claude usage", () => {
     const windows = normalizeClaudeUsage({
       five_hour: { utilization: 62, resets_at: null },
       seven_day: { utilization: 31, resets_at: null },
+      seven_day_sonnet: { utilization: 12, resets_at: null },
       seven_day_unrecognised: { utilization: 77, resets_at: null },
       extra_usage: { utilization: 99 },
     });
     expect(windows.map(({ id, usedPercent }) => [id, usedPercent])).toEqual([
       ["session", 62],
       ["weekly", 31],
+      ["sonnet-weekly", 12],
     ]);
   });
 
