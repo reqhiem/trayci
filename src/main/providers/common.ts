@@ -28,11 +28,12 @@ export class ProviderError extends Error {
 export const clamp = (value: number): number =>
   Math.min(100, Math.max(0, value));
 
+// Claude reports utilization on a 0-100 scale, never as a 0-1 fraction.
+// Do not reintroduce fraction detection: at value === 1 "1 percent" and the
+// fraction 1.0 are indistinguishable, so any such heuristic reads 1% as 100%.
 export function asUsedPercent(value: unknown): number | null {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
-  return clamp(
-    Math.round((value >= 0 && value <= 1 ? value * 100 : value) * 100) / 100,
-  );
+  return clamp(Math.round(value * 100) / 100);
 }
 
 export function toEpochMs(value: unknown): number | null {
