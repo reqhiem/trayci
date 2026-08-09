@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Trayci popover permissions",
+  "windows": ["popover"],
+  "permissions": ["core:default"]
+}
