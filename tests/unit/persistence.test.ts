@@ -21,5 +21,13 @@ describe("settings validation", () => {
         providers: { codex: { executablePath: "relative/codex" } },
       }),
     ).toThrow();
+    expect(() =>
+      mergeSettings(DEFAULT_SETTINGS, {
+        notifications: {
+          ...DEFAULT_SETTINGS.notifications,
+          quota80: "yes" as never,
+        },
+      }),
+    ).toThrow();
   });
 });

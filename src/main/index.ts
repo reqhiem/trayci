@@ -1,4 +1,4 @@
-import { app, ipcMain, powerMonitor } from "electron";
+import { app, ipcMain, Notification, powerMonitor } from "electron";
 import { IPC } from "../shared/ipc";
 import type {
   ProviderUsageSnapshot,
@@ -17,6 +17,7 @@ import { CodexProvider } from "./providers/codex";
 import { abortAllChildren } from "./providers/common";
 import { AntigravityProvider } from "./providers/antigravity";
 import { UsageService } from "./usage-service";
+import { QuotaNotifier } from "./notifications";
 import { Popover, TrayManager } from "./window";
 
 const args = cliArguments();
@@ -146,6 +147,12 @@ async function startApplication(): Promise<void> {
           new AntigravityProvider(() => settings.get()),
         ];
   const usage = new UsageService(providers, () => settings.get());
+  const notifier = new QuotaNotifier(
+    () => settings.get(),
+    (title, body) => {
+      if (Notification.isSupported()) new Notification({ title, body }).show();
+    },
+  );
   const popover = new Popover();
   await popover.load();
   const tray = new TrayManager((bounds) => popover.toggle(bounds));
@@ -157,6 +164,7 @@ async function startApplication(): Promise<void> {
   app.on("second-instance", show);
 
   const unsubscribe = usage.subscribe((state) => {
+    notifier.update(state);
     if (!popover.window.isDestroyed())
       popover.window.webContents.send(IPC.usageChanged, state);
     const summary = Object.values(state.providers)

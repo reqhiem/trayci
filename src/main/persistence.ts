@@ -112,6 +112,7 @@ const settingsKeys = new Set([
   "pollIntervalMinutes",
   "displayMode",
   "percentageDisplay",
+  "notifications",
   "providers",
 ]);
 
@@ -153,6 +154,19 @@ function validatePatch(patch: TrayciSettingsPatch): void {
     !["used", "remaining"].includes(patch.percentageDisplay)
   ) {
     throw new TypeError("Invalid percentageDisplay");
+  }
+  if (patch.notifications !== undefined) {
+    if (
+      !object(patch.notifications) ||
+      Object.keys(patch.notifications).some(
+        (key) => !["quota80", "quota90", "quota95", "reset"].includes(key),
+      ) ||
+      Object.values(patch.notifications).some(
+        (enabled) => typeof enabled !== "boolean",
+      )
+    ) {
+      throw new TypeError("Invalid notification settings");
+    }
   }
   if (patch.providers !== undefined) {
     if (
@@ -201,6 +215,10 @@ export function mergeSettings(
     ...current,
     ...patch,
     schemaVersion: 1,
+    notifications: {
+      ...current.notifications,
+      ...patch.notifications,
+    },
     providers: {
       claude: { ...current.providers.claude, ...patch.providers?.claude },
       codex: { ...current.providers.codex, ...patch.providers?.codex },
