@@ -87,6 +87,15 @@ function Metric({
 }): React.JSX.Element {
   const used = Math.min(100, Math.max(0, window.usedPercent));
   const value = displayPercent(window, settings.percentageDisplay);
+  const progressClass =
+    used < 50
+      ? "progress-low"
+      : used < 85
+        ? "progress-medium"
+        : used < 90
+          ? "progress-high"
+          : "progress-critical";
+
   return (
     <div className={dense ? "metric metric-dense" : "metric"}>
       <div className="metric-copy">
@@ -94,7 +103,7 @@ function Metric({
       </div>
       <div className="metric-line">
         <div
-          className="progress"
+          className={`progress ${progressClass}`}
           role="progressbar"
           aria-label={`${window.label} usage`}
           aria-valuemin={0}
@@ -309,7 +318,7 @@ function Settings({
       </section>
       <section className="settings-group">
         <h2>Notifications</h2>
-        {([80, 90, 95] as const).map((threshold) => (
+        {([50, 85, 90] as const).map((threshold) => (
           <Switch
             key={threshold}
             checked={settings.notifications[`quota${threshold}`]}
@@ -470,6 +479,10 @@ export default function App(): React.JSX.Element {
       ...settings,
       ...patch,
       schemaVersion: 1,
+      notifications: {
+        ...settings.notifications,
+        ...patch.notifications,
+      },
       providers: {
         claude: { ...settings.providers.claude, ...patch.providers?.claude },
         codex: { ...settings.providers.codex, ...patch.providers?.codex },

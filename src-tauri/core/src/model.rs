@@ -165,9 +165,9 @@ pub enum PercentageDisplay {
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NotificationSettings {
-    pub quota80: bool,
+    pub quota50: bool,
+    pub quota85: bool,
     pub quota90: bool,
-    pub quota95: bool,
     pub reset: bool,
 }
 
@@ -226,9 +226,9 @@ impl Default for TrayciSettings {
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NotificationSettingsPatch {
-    pub quota80: Option<bool>,
+    pub quota50: Option<bool>,
+    pub quota85: Option<bool>,
     pub quota90: Option<bool>,
-    pub quota95: Option<bool>,
     pub reset: Option<bool>,
 }
 

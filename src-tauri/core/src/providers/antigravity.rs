@@ -93,18 +93,23 @@ pub fn normalize_antigravity_quota(value: &Value) -> Vec<UsageWindow> {
     let mut windows: Vec<(UsageWindow, bool)> = Vec::new();
     let mut seen = HashMap::new();
     for bucket in candidates {
-        let (Some(remaining), Some(reset), Some(model)) = (
+        let reset_val = bucket
+            .get("resetTime")
+            .or_else(|| bucket.get("reset_time"))
+            .or_else(|| bucket.get("resetsAt"))
+            .or_else(|| bucket.get("reset"));
+        let (Some(remaining), Some(model)) = (
             bucket
                 .get("remainingFraction")
                 .and_then(Value::as_f64)
                 .filter(|v| v.is_finite()),
-            bucket.get("resetTime"),
             bucket.get("modelId").and_then(Value::as_str),
         ) else {
             continue;
         };
         let used = clamp((1.0 - remaining) * 100.0).round();
-        let resets = epoch_ms(reset);
+        let resets = reset_val.and_then(epoch_ms);
+        let reset_desc = reset_val.and_then(|v| v.as_str()).map(str::to_owned);
         let (name, known) = label(model);
         let item = (
             UsageWindow {
@@ -113,7 +118,7 @@ pub fn normalize_antigravity_quota(value: &Value) -> Vec<UsageWindow> {
                 used_percent: used,
                 duration_minutes: Some(60),
                 resets_at: resets,
-                reset_description: None,
+                reset_description: reset_desc,
             },
             known,
         );

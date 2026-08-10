@@ -381,6 +381,18 @@ h1 {
   background: var(--accent);
   transition: width 0.2s ease;
 }
+.progress.progress-low span {
+  background: #38bdf8;
+}
+.progress.progress-medium span {
+  background: #facc15;
+}
+.progress.progress-high span {
+  background: #f97316;
+}
+.progress.progress-critical span {
+  background: #ef4444;
+}
 .inline-error {
   padding: 9px 0;
   color: #ffb3a2;

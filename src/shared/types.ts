@@ -62,9 +62,9 @@ export type TrayciSettings = {
   displayMode: "detailed" | "compact";
   percentageDisplay: "used" | "remaining";
   notifications: {
-    quota80: boolean;
+    quota50: boolean;
+    quota85: boolean;
     quota90: boolean;
-    quota95: boolean;
     reset: boolean;
   };
   providers: Record<
@@ -91,9 +91,9 @@ export const DEFAULT_SETTINGS: TrayciSettings = {
   displayMode: "detailed",
   percentageDisplay: "used",
   notifications: {
-    quota80: false,
+    quota50: false,
+    quota85: false,
     quota90: false,
-    quota95: false,
     reset: false,
   },
   providers: {

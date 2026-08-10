@@ -62,9 +62,7 @@ pub fn show(
     let state = app.state::<PopoverState>();
     {
         let mut anchor = state.anchor.lock().expect("popover anchor lock");
-        if anchor.is_none() {
-            *anchor = tray_center.or(Some(position));
-        }
+        *anchor = tray_center.or(Some(position));
     }
     position_window(&window, &state)?;
     window.show()?;

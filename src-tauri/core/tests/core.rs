@@ -100,9 +100,9 @@ async fn cache_loads_valid_entries_as_normalized_stale_data() {
 fn notifications_emit_only_the_highest_new_threshold() {
     let mut notifier = QuotaNotifier::default();
     let settings = NotificationSettings {
-        quota80: true,
+        quota50: true,
+        quota85: true,
         quota90: true,
-        quota95: true,
         reset: true,
     };
     let mut state = UsageState::default();
@@ -111,7 +111,7 @@ fn notifications_emit_only_the_highest_new_threshold() {
         .insert("claude".into(), snapshot(96.0, UsageStatus::Ok));
     let requests = notifier.update(&state, &settings, 1_500);
     assert_eq!(requests.len(), 1);
-    assert_eq!(requests[0].title, "Claude quota at 95%");
+    assert_eq!(requests[0].title, "Claude quota at 90%");
     assert!(notifier.update(&state, &settings, 1_500).is_empty());
 }
 

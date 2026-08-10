@@ -42,6 +42,18 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_notification::init())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                        if let Some(window) = app.get_webview_window(popover::LABEL) {
+                            let position = window.cursor_position().unwrap_or_default();
+                            let _ = popover::toggle(app, position, None);
+                        }
+                    }
+                })
+                .build(),
+        )
         .manage(popover::PopoverState::default())
         .invoke_handler(tauri::generate_handler![
             commands::get_usage_state,
@@ -65,6 +77,10 @@ pub fn run() {
 
             popover::create(app.handle())?;
             tray::create(app.handle())?;
+            use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
+            if let Ok(shortcut) = "Ctrl+Alt+U".parse::<Shortcut>() {
+                let _ = app.global_shortcut().register(shortcut);
+            }
             let handle = app.handle().clone();
             let notification_settings = Arc::clone(&current);
             let notifier = Arc::new(Mutex::new(QuotaNotifier::default()));

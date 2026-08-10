@@ -245,7 +245,7 @@ pub fn epoch_ms(value: &serde_json::Value) -> Option<u64> {
 
 pub fn reset_from_text(text: &str, now: u64) -> Option<u64> {
     static DURATION: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"(?i)(?:resets?\s+in\s+)?(?:(\d+)d)?\s*(?:(\d+)h)?\s*(?:(\d+)m)?").unwrap()
+        Regex::new(r"(?i)(?:resets?\s+in\s+)?(?:(\d+)\s*d(?:ays?)?)?\s*(?:(\d+)\s*h(?:ours?|rs?)?)?\s*(?:(\d+)\s*m(?:inutes?|ins?)?)?").unwrap()
     });
     if let Some(captures) = DURATION.captures(text) {
         let minutes = [1, 2, 3].map(|i| {

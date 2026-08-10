@@ -110,14 +110,14 @@ fn merge_notifications(
     target: &mut crate::model::NotificationSettings,
     patch: NotificationSettingsPatch,
 ) {
-    if let Some(value) = patch.quota80 {
-        target.quota80 = value;
+    if let Some(value) = patch.quota50 {
+        target.quota50 = value;
+    }
+    if let Some(value) = patch.quota85 {
+        target.quota85 = value;
     }
     if let Some(value) = patch.quota90 {
         target.quota90 = value;
-    }
-    if let Some(value) = patch.quota95 {
-        target.quota95 = value;
     }
     if let Some(value) = patch.reset {
         target.reset = value;

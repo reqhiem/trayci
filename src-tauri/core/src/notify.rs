@@ -88,16 +88,16 @@ impl QuotaNotifier {
 }
 
 fn thresholds_at(used_percent: f64) -> impl Iterator<Item = u8> {
-    [80, 90, 95]
+    [50, 85, 90]
         .into_iter()
         .filter(move |threshold| used_percent >= f64::from(*threshold))
 }
 
 fn enabled(settings: &NotificationSettings, threshold: u8) -> bool {
     match threshold {
-        80 => settings.quota80,
+        50 => settings.quota50,
+        85 => settings.quota85,
         90 => settings.quota90,
-        95 => settings.quota95,
         _ => false,
     }
 }
