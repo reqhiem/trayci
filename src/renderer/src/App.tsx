@@ -226,7 +226,7 @@ function ProviderDetail({
       className="provider-detail"
       aria-label={`${snapshot.displayName} details`}
     >
-      <header>
+      <header data-tauri-drag-region>
         <div className="detail-title">
           <ProviderIcon provider={snapshot.provider} />
           <strong>{snapshot.displayName}</strong>
@@ -509,7 +509,7 @@ export default function App(): React.JSX.Element {
   return (
     <main ref={root} className={selected ? "has-detail" : ""}>
       <section className="master">
-        <header className="topbar">
+        <header className="topbar" data-tauri-drag-region>
           {view === "settings" ? (
             <button
               ref={backButton}

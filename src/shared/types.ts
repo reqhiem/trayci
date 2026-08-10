@@ -71,6 +71,7 @@ export type TrayciSettings = {
     BuiltInProviderId,
     { enabled: boolean; executablePath: string | null }
   >;
+  windowPosition: [number, number] | null;
 };
 
 export type TrayciSettingsPatch = Partial<
@@ -101,6 +102,7 @@ export const DEFAULT_SETTINGS: TrayciSettings = {
     codex: { enabled: true, executablePath: null },
     antigravity: { enabled: true, executablePath: null },
   },
+  windowPosition: null,
 };
 
 export type TrayciApi = {

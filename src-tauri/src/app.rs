@@ -10,7 +10,7 @@ use trayci_core::{
 
 pub struct AppState {
     pub service: Arc<UsageService>,
-    pub repository: AsyncMutex<SettingsRepository>,
+    pub repository: Arc<AsyncMutex<SettingsRepository>>,
     pub settings: Arc<Mutex<TrayciSettings>>,
     _subscription: Mutex<Option<Subscription>>,
 }
@@ -68,6 +68,11 @@ pub fn run() {
             let mut repository = SettingsRepository::default();
             let settings = tauri::async_runtime::block_on(repository.load());
             tauri::async_runtime::block_on(autostart::set_enabled(settings.start_on_login))?;
+            if let Some((x, y)) = settings.window_position {
+                let state = app.state::<popover::PopoverState>();
+                *state.custom_position.lock().expect("custom pos lock") =
+                    Some(tauri::PhysicalPosition::new(x, y));
+            }
             let current = Arc::new(Mutex::new(settings));
             let settings_for_service = Arc::clone(&current);
             let service = Arc::new(UsageService::new(
@@ -111,7 +116,7 @@ pub fn run() {
             });
             app.manage(AppState {
                 service: Arc::clone(&service),
-                repository: AsyncMutex::new(repository),
+                repository: Arc::new(AsyncMutex::new(repository)),
                 settings: current,
                 _subscription: Mutex::new(Some(subscription)),
             });

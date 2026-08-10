@@ -3,5 +3,9 @@
   "identifier": "default",
   "description": "Trayci popover permissions",
   "windows": ["popover"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    "global-shortcut:default",
+    "notification:default"
+  ]
 }

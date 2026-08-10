@@ -206,6 +206,8 @@ pub struct TrayciSettings {
     pub percentage_display: PercentageDisplay,
     pub notifications: NotificationSettings,
     pub providers: BuiltInProviderSettings,
+    #[serde(default)]
+    pub window_position: Option<(i32, i32)>,
 }
 
 impl Default for TrayciSettings {
@@ -219,6 +221,7 @@ impl Default for TrayciSettings {
             percentage_display: PercentageDisplay::Used,
             notifications: NotificationSettings::default(),
             providers: BuiltInProviderSettings::default(),
+            window_position: None,
         }
     }
 }
@@ -266,4 +269,6 @@ pub struct TrayciSettingsPatch {
     pub percentage_display: Option<PercentageDisplay>,
     pub notifications: Option<NotificationSettingsPatch>,
     pub providers: Option<BuiltInProviderSettingsPatch>,
+    #[serde(default, deserialize_with = "deserialize_optional_option")]
+    pub window_position: Option<Option<(i32, i32)>>,
 }

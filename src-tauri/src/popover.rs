@@ -13,6 +13,7 @@ pub const MAX_HEIGHT: f64 = 620.0;
 #[derive(Default)]
 pub struct PopoverState {
     anchor: Mutex<Option<PhysicalPosition<f64>>>,
+    pub custom_position: Mutex<Option<PhysicalPosition<i32>>>,
 }
 
 pub fn create(app: &tauri::AppHandle) -> tauri::Result<WebviewWindow> {
@@ -28,11 +29,31 @@ pub fn create(app: &tauri::AppHandle) -> tauri::Result<WebviewWindow> {
         .visible(false)
         .focused(false)
         .build()?;
+
     let hide = window.clone();
-    window.on_window_event(move |event| {
-        if matches!(event, WindowEvent::Focused(false)) {
+    let app_handle = app.clone();
+    window.on_window_event(move |event| match event {
+        WindowEvent::Focused(false) => {
             let _ = hide.hide();
         }
+        WindowEvent::Moved(pos) => {
+            if hide.is_visible().unwrap_or(false) {
+                let state = app_handle.state::<PopoverState>();
+                *state.custom_position.lock().expect("popover pos lock") = Some(*pos);
+                if let Some(app_state) = app_handle.try_state::<crate::app::AppState>() {
+                    let repository = app_state.repository.clone();
+                    let patch = trayci_core::TrayciSettingsPatch {
+                        window_position: Some(Some((pos.x, pos.y))),
+                        ..Default::default()
+                    };
+                    tauri::async_runtime::spawn(async move {
+                        let mut repo = repository.lock().await;
+                        let _ = repo.update(patch).await;
+                    });
+                }
+            }
+        }
+        _ => {}
     });
     Ok(window)
 }
@@ -81,6 +102,9 @@ pub fn resize(app: &tauri::AppHandle, width: f64, height: f64) -> tauri::Result<
 }
 
 fn position_window(window: &WebviewWindow, state: &PopoverState) -> tauri::Result<()> {
+    if let Some(pos) = *state.custom_position.lock().expect("popover custom_position lock") {
+        return window.set_position(pos);
+    }
     let anchor = state
         .anchor
         .lock()
