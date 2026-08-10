@@ -12,6 +12,7 @@ import {
   formatResetCountdown,
   tightestWindow,
 } from "../../shared/presentation";
+import { trayci } from "./bridge";
 
 const EMPTY_STATE: UsageState = {
   providers: {},
@@ -86,6 +87,15 @@ function Metric({
 }): React.JSX.Element {
   const used = Math.min(100, Math.max(0, window.usedPercent));
   const value = displayPercent(window, settings.percentageDisplay);
+  const progressClass =
+    used < 50
+      ? "progress-low"
+      : used < 85
+        ? "progress-medium"
+        : used < 90
+          ? "progress-high"
+          : "progress-critical";
+
   return (
     <div className={dense ? "metric metric-dense" : "metric"}>
       <div className="metric-copy">
@@ -93,7 +103,7 @@ function Metric({
       </div>
       <div className="metric-line">
         <div
-          className="progress"
+          className={`progress ${progressClass}`}
           role="progressbar"
           aria-label={`${window.label} usage`}
           aria-valuemin={0}
@@ -216,7 +226,7 @@ function ProviderDetail({
       className="provider-detail"
       aria-label={`${snapshot.displayName} details`}
     >
-      <header>
+      <header data-tauri-drag-region>
         <div className="detail-title">
           <ProviderIcon provider={snapshot.provider} />
           <strong>{snapshot.displayName}</strong>
@@ -286,25 +296,29 @@ function Settings({
           onChange={(refreshOnResume) => update({ refreshOnResume })}
           label="Refresh after resume"
         />
-        <label className="setting-row">
+        <div className="setting-row">
           <span>Refresh interval</span>
-          <select
-            value={settings.pollIntervalMinutes}
-            onChange={(event) =>
-              update({ pollIntervalMinutes: Number(event.target.value) })
-            }
+          <div
+            className="choice-group"
+            role="group"
+            aria-label="Refresh interval"
           >
             {[5, 15, 30, 60].map((minutes) => (
-              <option key={minutes} value={minutes}>
-                {minutes} minutes
-              </option>
+              <button
+                key={minutes}
+                type="button"
+                aria-pressed={settings.pollIntervalMinutes === minutes}
+                onClick={() => update({ pollIntervalMinutes: minutes })}
+              >
+                {minutes}m
+              </button>
             ))}
-          </select>
-        </label>
+          </div>
+        </div>
       </section>
       <section className="settings-group">
         <h2>Notifications</h2>
-        {([80, 90, 95] as const).map((threshold) => (
+        {([50, 85, 90] as const).map((threshold) => (
           <Switch
             key={threshold}
             checked={settings.notifications[`quota${threshold}`]}
@@ -349,25 +363,26 @@ function Settings({
       </section>
       <section className="settings-group">
         <h2>Display</h2>
-        <label className="setting-row">
+        <div className="setting-row">
           <span>Percentage</span>
-          <select
-            value={settings.percentageDisplay}
-            onChange={(event) =>
-              update({
-                percentageDisplay: event.target.value as "used" | "remaining",
-              })
-            }
-          >
-            <option value="used">Used</option>
-            <option value="remaining">Remaining</option>
-          </select>
-        </label>
+          <div className="choice-group" role="group" aria-label="Percentage">
+            {(["used", "remaining"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                aria-pressed={settings.percentageDisplay === mode}
+                onClick={() => update({ percentageDisplay: mode })}
+              >
+                {mode === "used" ? "Used" : "Remaining"}
+              </button>
+            ))}
+          </div>
+        </div>
       </section>
       <button
         className="quit-button"
         type="button"
-        onClick={() => void window.trayci.app.quit()}
+        onClick={() => void trayci.app.quit()}
       >
         Quit Trayci
       </button>
@@ -390,16 +405,13 @@ export default function App(): React.JSX.Element {
   const skipViewFocus = useRef(true);
 
   useEffect(() => {
-    void Promise.all([
-      window.trayci.usage.getState(),
-      window.trayci.settings.get(),
-    ])
+    void Promise.all([trayci.usage.getState(), trayci.settings.get()])
       .then(([nextState, nextSettings]) => {
         setState(nextState);
         setSettings(nextSettings);
       })
       .catch(() => setError("Trayci could not load its state."));
-    const unsubscribe = window.trayci.usage.subscribe(setState);
+    const unsubscribe = trayci.usage.subscribe(setState);
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
     return () => {
       unsubscribe();
@@ -419,7 +431,7 @@ export default function App(): React.JSX.Element {
     const escape = (event: KeyboardEvent): void => {
       if (event.key !== "Escape") return;
       if (view === "usage" && selectedProvider) setSelectedProvider(null);
-      else void window.trayci.app.hidePopover();
+      else void trayci.app.hidePopover();
     };
     window.addEventListener("keydown", escape);
     return () => window.removeEventListener("keydown", escape);
@@ -448,11 +460,7 @@ export default function App(): React.JSX.Element {
     const resize = (): void => {
       window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(
-        () =>
-          void window.trayci.app.resizePopover(
-            targetWidth,
-            element.scrollHeight,
-          ),
+        () => void trayci.app.resizePopover(targetWidth, element.scrollHeight),
       );
     };
     const observer = new ResizeObserver(resize);
@@ -471,6 +479,10 @@ export default function App(): React.JSX.Element {
       ...settings,
       ...patch,
       schemaVersion: 1,
+      notifications: {
+        ...settings.notifications,
+        ...patch.notifications,
+      },
       providers: {
         claude: { ...settings.providers.claude, ...patch.providers?.claude },
         codex: { ...settings.providers.codex, ...patch.providers?.codex },
@@ -480,7 +492,7 @@ export default function App(): React.JSX.Element {
         },
       },
     });
-    void window.trayci.settings
+    void trayci.settings
       .update(patch)
       .then(setSettings)
       .catch(() => {
@@ -497,7 +509,7 @@ export default function App(): React.JSX.Element {
   return (
     <main ref={root} className={selected ? "has-detail" : ""}>
       <section className="master">
-        <header className="topbar">
+        <header className="topbar" data-tauri-drag-region>
           {view === "settings" ? (
             <button
               ref={backButton}
@@ -519,7 +531,7 @@ export default function App(): React.JSX.Element {
                 aria-label="Refresh usage"
                 disabled={state.isRefreshing}
                 onClick={() =>
-                  void window.trayci.usage
+                  void trayci.usage
                     .refreshAll()
                     .catch(() => setError("Refresh failed."))
                 }

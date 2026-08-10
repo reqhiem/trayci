@@ -43,7 +43,7 @@ Trayci requires at least one authenticated provider. Antigravity reads the signe
 
 ## Development
 
-Requirements: Linux amd64 or Windows x64, Node.js 22+, pnpm 9+, and at least one authenticated provider CLI.
+Trayci runs on Tauri 2: a Rust core (`src-tauri/`) with the React renderer in the system WebView. Requirements: Linux amd64 or Windows x64, Node.js 22+, pnpm 9+, Rust 1.80+, the Tauri system dependencies (`libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev` on Debian/Ubuntu), and at least one authenticated provider CLI.
 
 ```bash
 pnpm install
@@ -57,7 +57,6 @@ pnpm format:check
 pnpm lint
 pnpm typecheck
 pnpm test
-pnpm test:e2e
 pnpm dist:linux
 pnpm dist:win
 ```
@@ -65,7 +64,6 @@ pnpm dist:win
 Diagnostics reuse the same provider code as the desktop app:
 
 ```bash
-pnpm build
 pnpm cli -- usage --json
 pnpm cli -- usage antigravity
 pnpm cli -- doctor
@@ -75,7 +73,7 @@ Lefthook formats staged files with Prettier before each commit. Run `pnpm exec l
 
 ## Releases
 
-Pull requests and changes to `main` run CI and produce downloadable Linux and Windows build artifacts. To publish a release, update the version in `package.json` and push the matching tag, for example `v0.2.0`; GitHub Actions builds and attaches Linux and Windows installers to the release.
+Pull requests and changes to `main` run CI and produce downloadable Linux and Windows build artifacts. To publish a release, update the version in `package.json` and push the matching tag, for example `v0.3.0`; GitHub Actions builds and attaches Linux and Windows installers to the release.
 
 ## Contributing
 

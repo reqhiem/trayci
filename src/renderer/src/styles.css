@@ -51,7 +51,6 @@ main {
   display: grid;
   grid-template-columns: 1fr;
   width: 100%;
-  min-height: 140px;
   background: var(--ink);
 }
 main.has-detail {
@@ -382,6 +381,18 @@ h1 {
   background: var(--accent);
   transition: width 0.2s ease;
 }
+.progress.progress-low span {
+  background: #38bdf8;
+}
+.progress.progress-medium span {
+  background: #facc15;
+}
+.progress.progress-high span {
+  background: #f97316;
+}
+.progress.progress-critical span {
+  background: #ef4444;
+}
 .inline-error {
   padding: 9px 0;
   color: #ffb3a2;
@@ -418,13 +429,23 @@ h1 {
   border-top: 1px solid var(--line);
   font-size: 11px;
 }
-.setting-row select {
-  max-width: 140px;
-  padding: 4px 7px;
+.choice-group {
+  display: flex;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 5px;
+}
+.choice-group button {
+  padding: 4px 7px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.choice-group button + button {
+  border-left: 1px solid var(--line);
+}
+.choice-group button[aria-pressed="true"] {
   color: var(--paper);
-  background: var(--ink);
+  background: rgba(246, 244, 239, 0.14);
 }
 input[role="switch"] {
   appearance: none;

@@ -1,8 +1,6 @@
 .misc/
 node_modules/
-out/
 dist/
-release/
-playwright-report/
-test-results/
+/src-tauri/gen/
+/src-tauri/target/
 *.log

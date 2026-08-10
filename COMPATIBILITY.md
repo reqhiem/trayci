@@ -6,3 +6,5 @@
 | Ubuntu 25       | GNOME          |                Pass |    Pass |       Pass |   Pass |  Pass |     Not run |
 
 The Mint and Ubuntu 25 (GNOME) rows were checked with the packaged Electron runtime, real local provider sessions, the renderer E2E, and XDG autostart writing in an isolated configuration directory. Antigravity's four quota windows were validated on Mint against a signed-in `agy` 1.1.11 session; packaged popover validation remains pending.
+
+**Note:** as of v0.3.0 Trayci runs on Tauri 2. The matrix above reflects the retired Electron build and is pending re-validation against the Tauri build (see tech spec §19 for the known Tauri/Linux watch-items).
