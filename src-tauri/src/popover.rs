@@ -102,7 +102,11 @@ pub fn resize(app: &tauri::AppHandle, width: f64, height: f64) -> tauri::Result<
 }
 
 fn position_window(window: &WebviewWindow, state: &PopoverState) -> tauri::Result<()> {
-    if let Some(pos) = *state.custom_position.lock().expect("popover custom_position lock") {
+    if let Some(pos) = *state
+        .custom_position
+        .lock()
+        .expect("popover custom_position lock")
+    {
         return window.set_position(pos);
     }
     let anchor = state
