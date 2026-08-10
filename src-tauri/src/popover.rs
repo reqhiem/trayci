@@ -36,21 +36,19 @@ pub fn create(app: &tauri::AppHandle) -> tauri::Result<WebviewWindow> {
         WindowEvent::Focused(false) => {
             let _ = hide.hide();
         }
-        WindowEvent::Moved(pos) => {
-            if hide.is_visible().unwrap_or(false) {
-                let state = app_handle.state::<PopoverState>();
-                *state.custom_position.lock().expect("popover pos lock") = Some(*pos);
-                if let Some(app_state) = app_handle.try_state::<crate::app::AppState>() {
-                    let repository = app_state.repository.clone();
-                    let patch = trayci_core::TrayciSettingsPatch {
-                        window_position: Some(Some((pos.x, pos.y))),
-                        ..Default::default()
-                    };
-                    tauri::async_runtime::spawn(async move {
-                        let mut repo = repository.lock().await;
-                        let _ = repo.update(patch).await;
-                    });
-                }
+        WindowEvent::Moved(pos) if hide.is_visible().unwrap_or(false) => {
+            let state = app_handle.state::<PopoverState>();
+            *state.custom_position.lock().expect("popover pos lock") = Some(*pos);
+            if let Some(app_state) = app_handle.try_state::<crate::app::AppState>() {
+                let repository = app_state.repository.clone();
+                let patch = trayci_core::TrayciSettingsPatch {
+                    window_position: Some(Some((pos.x, pos.y))),
+                    ..Default::default()
+                };
+                tauri::async_runtime::spawn(async move {
+                    let mut repo = repository.lock().await;
+                    let _ = repo.update(patch).await;
+                });
             }
         }
         _ => {}
