@@ -1,6 +1,6 @@
 {
   "name": "trayci",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "AI coding quota usage in your Linux system tray",
   "author": {
     "name": "Joel Perca",
