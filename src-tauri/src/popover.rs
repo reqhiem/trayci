@@ -57,7 +57,10 @@ pub fn create(app: &tauri::AppHandle) -> tauri::Result<WebviewWindow> {
         .min_inner_size(MIN_WIDTH, MIN_HEIGHT)
         .max_inner_size(MAX_WIDTH, MAX_HEIGHT)
         .decorations(false)
-        .resizable(false)
+        // A window an X11 window manager is told is not resizable gets pinned to one set of size
+        // hints, so it would never grow for the detail pane. Undecorated, there is no resize handle
+        // for the user to reach anyway, and min/max inner size still bound what the popover asks for.
+        .resizable(true)
         .always_on_top(true)
         .skip_taskbar(true)
         .visible(false)
