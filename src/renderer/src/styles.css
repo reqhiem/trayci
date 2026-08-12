@@ -21,6 +21,7 @@
   --progress-medium: #facc15;
   --progress-high: #f97316;
   --progress-critical: #ef4444;
+  --antigravity: #7da7ff;
 
   color: var(--paper);
   background: var(--ink);
@@ -45,6 +46,7 @@
   --progress-medium: #b45309;
   --progress-high: #c2410c;
   --progress-critical: #dc2626;
+  --antigravity: #3b63c4;
 }
 
 * {
@@ -230,7 +232,7 @@ h1 {
   color: var(--paper);
 }
 .antigravity-icon {
-  color: #7da7ff;
+  color: var(--antigravity);
 }
 .antigravity-icon svg {
   fill: currentColor;

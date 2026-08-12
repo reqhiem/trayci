@@ -232,7 +232,7 @@ function ProviderDetail({
       className="provider-detail"
       aria-label={`${snapshot.displayName} details`}
     >
-      <header data-tauri-drag-region>
+      <header data-tauri-drag-region="deep">
         <div className="detail-title">
           <ProviderIcon provider={snapshot.provider} />
           <strong>{snapshot.displayName}</strong>
@@ -436,7 +436,6 @@ function Settings({
           <button
             className="row-button"
             type="button"
-            disabled={!settings.windowPosition}
             onClick={() => update({ windowPosition: null })}
           >
             Reset position
@@ -508,13 +507,15 @@ export default function App(): React.JSX.Element {
   }, [settings.theme]);
 
   // Tauri moves the window itself; the backend only needs to know the move was ours to keep.
+  // Capture phase is required: Tauri's own mousedown listener on `document` calls
+  // stopImmediatePropagation() before starting the drag, so a bubbling listener never runs.
   useEffect(() => {
     const start = (event: MouseEvent): void => {
       if ((event.target as HTMLElement).closest?.("[data-tauri-drag-region]"))
         void trayci.app.beginDrag();
     };
-    window.addEventListener("mousedown", start);
-    return () => window.removeEventListener("mousedown", start);
+    window.addEventListener("mousedown", start, true);
+    return () => window.removeEventListener("mousedown", start, true);
   }, []);
 
   useEffect(() => {
@@ -596,7 +597,7 @@ export default function App(): React.JSX.Element {
   return (
     <main className={selected ? "has-detail" : ""}>
       <section className="master" ref={master}>
-        <header className="topbar" data-tauri-drag-region>
+        <header className="topbar" data-tauri-drag-region="deep">
           {view === "settings" ? (
             <button
               ref={backButton}
