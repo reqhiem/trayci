@@ -106,6 +106,28 @@ fn antigravity_cli_and_oauth_variants() {
 }
 
 #[test]
+fn antigravity_reads_the_refreshes_in_wording() {
+    let (windows, _) =
+        parse_antigravity_usage(include_str!("fixtures/antigravity/usage-standard.txt"), NOW);
+    assert_eq!(
+        windows
+            .iter()
+            .map(|value| (value.id.as_str(), value.resets_at))
+            .collect::<Vec<_>>(),
+        [
+            ("gemini-session", Some(NOW + 109 * 60_000)),
+            ("gemini-weekly", Some(NOW + 5393 * 60_000)),
+            ("claude-gpt-session", None),
+            ("claude-gpt-weekly", None)
+        ]
+    );
+    assert_eq!(
+        windows[0].reset_description.as_deref(),
+        Some("Refreshes in 1h 49m")
+    );
+}
+
+#[test]
 fn strips_terminal_control_sequences() {
     assert_eq!(
         strip_terminal_codes("\u{1b}[31mUsage\u{1b}[0m\u{1b}]0;title\u{7}\r42%\0"),

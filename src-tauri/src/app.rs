@@ -60,6 +60,7 @@ pub fn run() {
             commands::refresh_all,
             commands::get_settings,
             commands::update_settings,
+            commands::begin_popover_drag,
             commands::hide_popover,
             commands::resize_popover,
             commands::quit_app,
@@ -68,11 +69,9 @@ pub fn run() {
             let mut repository = SettingsRepository::default();
             let settings = tauri::async_runtime::block_on(repository.load());
             tauri::async_runtime::block_on(autostart::set_enabled(settings.start_on_login))?;
-            if let Some((x, y)) = settings.window_position {
-                let state = app.state::<popover::PopoverState>();
-                *state.custom_position.lock().expect("custom pos lock") =
-                    Some(tauri::PhysicalPosition::new(x, y));
-            }
+            app.state::<popover::PopoverState>()
+                .set_custom_position(settings.window_position);
+            let font_scale = settings.font_scale;
             let current = Arc::new(Mutex::new(settings));
             let settings_for_service = Arc::clone(&current);
             let service = Arc::new(UsageService::new(
@@ -81,6 +80,7 @@ pub fn run() {
             ));
 
             popover::create(app.handle())?;
+            popover::set_scale(app.handle(), font_scale)?;
             tray::create(app.handle())?;
             use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
             if let Ok(shortcut) = "Ctrl+Alt+U".parse::<Shortcut>() {
@@ -128,6 +128,7 @@ pub fn run() {
 
     app.run(|handle, event| {
         if matches!(event, RunEvent::ExitRequested { .. }) {
+            popover::save_position(handle);
             if let Some(state) = handle.try_state::<AppState>() {
                 tauri::async_runtime::block_on(state.service.stop());
             }

@@ -1,5 +1,8 @@
 use super::{
-    common::{clamp, epoch_ms, home_dir, reset_from_text, resolve_executable, run_pty, PtyOptions},
+    common::{
+        clamp, epoch_ms, home_dir, reset_from_text, reset_phrase, resolve_executable, run_pty,
+        PtyOptions,
+    },
     google_oauth,
 };
 use crate::{model::*, service::UsageProvider};
@@ -158,26 +161,18 @@ fn quota_group(
         .collect::<Vec<_>>()
         .join(" ");
     [
-        (
-            "session",
-            "5h",
-            300,
-            r"(?i)Five Hour Limit Remaining[^%]{0,200}?(\d+(?:\.\d+)?)%((?:\s+Resets?[^.]{1,80})?)",
-        ),
-        (
-            "weekly",
-            "Weekly",
-            10_080,
-            r"(?i)Weekly Limit Remaining[^%]{0,200}?(\d+(?:\.\d+)?)%((?:\s+Resets?[^.]{1,80})?)",
-        ),
+        ("session", "5h", 300, "Five Hour"),
+        ("weekly", "Weekly", 10_080, "Weekly"),
     ]
     .into_iter()
-    .filter_map(|(window_id, window_name, duration, pattern)| {
-        let captures = Regex::new(pattern).unwrap().captures(&section)?;
-        let reset = Regex::new(r"(?i)resets?\s+(?:in\s+)?[^.]{1,80}")
-            .unwrap()
-            .find(captures.get(2).map_or("", |value| value.as_str()))
-            .map(|value| value.as_str().trim().to_owned());
+    .filter_map(|(window_id, window_name, duration, heading)| {
+        // Group 2 is everything up to the next window, where the reset copy lives:
+        // "84% remaining · Refreshes in 1h 49m".
+        let pattern = format!(
+            r"(?i){heading} Limit Remaining[^%]{{0,200}}?(\d+(?:\.\d+)?)%(.*?)(?:Limit Remaining|$)"
+        );
+        let captures = Regex::new(&pattern).unwrap().captures(&section)?;
+        let reset = reset_phrase(captures.get(2).map_or("", |value| value.as_str()));
         Some(UsageWindow {
             id: format!("{id}-{window_id}"),
             label: format!("{name} {window_name}"),
@@ -275,7 +270,7 @@ async fn api(
         client()
             .post(format!("{CODE_ASSIST}:{path}"))
             .bearer_auth(token)
-            .header("user-agent", "trayci/0.3.0")
+            .header("user-agent", concat!("trayci/", env!("CARGO_PKG_VERSION")))
             .json(&body),
         cancellation,
     )

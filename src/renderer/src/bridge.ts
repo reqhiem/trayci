@@ -32,6 +32,7 @@ export const trayci: TrayciApi = {
       invoke<TrayciSettings>("update_settings", { patch }),
   },
   app: {
+    beginDrag: () => invoke<void>("begin_popover_drag"),
     hidePopover: () => invoke<void>("hide_popover"),
     resizePopover: (width, height) =>
       invoke<void>("resize_popover", { width, height }),

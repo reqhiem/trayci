@@ -162,6 +162,21 @@ pub enum PercentageDisplay {
     Remaining,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Theme {
+    #[default]
+    Dark,
+    Light,
+    System,
+}
+
+pub const FONT_SCALE_RANGE: std::ops::RangeInclusive<f64> = 0.8..=1.6;
+
+fn default_font_scale() -> f64 {
+    1.0
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NotificationSettings {
@@ -195,7 +210,7 @@ pub struct BuiltInProviderSettings {
     pub antigravity: ProviderSettings,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TrayciSettings {
     pub schema_version: u8,
@@ -208,6 +223,10 @@ pub struct TrayciSettings {
     pub providers: BuiltInProviderSettings,
     #[serde(default)]
     pub window_position: Option<(i32, i32)>,
+    #[serde(default)]
+    pub theme: Theme,
+    #[serde(default = "default_font_scale")]
+    pub font_scale: f64,
 }
 
 impl Default for TrayciSettings {
@@ -222,6 +241,8 @@ impl Default for TrayciSettings {
             notifications: NotificationSettings::default(),
             providers: BuiltInProviderSettings::default(),
             window_position: None,
+            theme: Theme::default(),
+            font_scale: default_font_scale(),
         }
     }
 }
@@ -271,4 +292,6 @@ pub struct TrayciSettingsPatch {
     pub providers: Option<BuiltInProviderSettingsPatch>,
     #[serde(default, deserialize_with = "deserialize_optional_option")]
     pub window_position: Option<Option<(i32, i32)>>,
+    pub theme: Option<Theme>,
+    pub font_scale: Option<f64>,
 }

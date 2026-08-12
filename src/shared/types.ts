@@ -72,7 +72,17 @@ export type TrayciSettings = {
     { enabled: boolean; executablePath: string | null }
   >;
   windowPosition: [number, number] | null;
+  theme: "dark" | "light" | "system";
+  /** Webview zoom, 0.8 to 1.6. */
+  fontScale: number;
 };
+
+export const FONT_SCALES: readonly (readonly [number, string])[] = [
+  [0.9, "S"],
+  [1, "M"],
+  [1.15, "L"],
+  [1.3, "XL"],
+];
 
 export type TrayciSettingsPatch = Partial<
   Omit<TrayciSettings, "schemaVersion" | "providers">
@@ -103,6 +113,8 @@ export const DEFAULT_SETTINGS: TrayciSettings = {
     antigravity: { enabled: true, executablePath: null },
   },
   windowPosition: null,
+  theme: "dark",
+  fontScale: 1,
 };
 
 export type TrayciApi = {
@@ -116,6 +128,7 @@ export type TrayciApi = {
     update(patch: TrayciSettingsPatch): Promise<TrayciSettings>;
   };
   app: {
+    beginDrag(): Promise<void>;
     hidePopover(): Promise<void>;
     resizePopover(width: number, height: number): Promise<void>;
     quit(): Promise<void>;
