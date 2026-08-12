@@ -19,7 +19,7 @@ Trayci is a local-first Linux system tray app that shows Claude Code, Codex, and
 - Claude Code, Codex, and Antigravity usage in a compact tray popover
 - Detailed and compact views: hover a provider to reveal its windows, click to pin them
 - Reset countdowns for every provider, including Antigravity's 5-hour and weekly limits
-- Drag the popover by its header to any spot on screen; the position sticks between sessions
+- Drag the popover by its title bar to any spot on screen; the position sticks between sessions
 - Light and dark themes plus four text sizes
 - Automatic refresh, stale data handling, and a credential-free local cache
 - Configurable providers, polling, startup, and percentage display
@@ -43,6 +43,8 @@ sudo apt install ./trayci_*_amd64.deb
 ```
 
 Trayci requires at least one authenticated provider. Antigravity reads the signed-in `agy` CLI's `/usage` panel and falls back to Orca ADE's Google Code Assist quota path when Gemini OAuth credentials are available.
+
+On a Wayland session Trayci runs through XWayland, because GTK lets no Wayland client place its own window and the popover has to sit under the tray icon, be dragged, and reopen where it was left. Set `GDK_BACKEND=wayland` to override this.
 
 ## Development
 

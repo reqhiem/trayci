@@ -9,7 +9,9 @@ import type {
 } from "../../shared/types";
 import { DEFAULT_SETTINGS, FONT_SCALES } from "../../shared/types";
 import {
+  formatAge,
   formatResetCountdown,
+  statusSummary,
   tightestWindow,
 } from "../../shared/presentation";
 import { trayci } from "./bridge";
@@ -146,11 +148,7 @@ function ProviderRow({
   onReveal(): void;
 }): React.JSX.Element {
   const tightest = tightestWindow(snapshot);
-  const ageMinutes = Math.max(
-    0,
-    Math.floor((now - snapshot.updatedAt) / 60_000),
-  );
-  const updated = ageMinutes ? `Updated ${ageMinutes}m ago` : "Updated now";
+  const summary = statusSummary(snapshot, now);
   return (
     <button
       className={`provider-row provider-${snapshot.status}`}
@@ -173,18 +171,12 @@ function ProviderRow({
               {displayPercent(tightest, settings.percentageDisplay)}%
             </strong>
           </span>
-        ) : snapshot.status === "stale" ? (
-          <span className="status">{updated}</span>
-        ) : tightest?.resetsAt ? (
-          <span className="reset-summary">
-            Resets in {formatResetCountdown(tightest.resetsAt, now)}
+        ) : summary ? (
+          <span className={summary.stale ? "status" : "reset-summary"}>
+            {summary.text}
           </span>
-        ) : snapshot.windows.length ? (
-          <span className="status">{updated}</span>
         ) : null}
-        <span className="chevron" aria-hidden="true">
-          ›
-        </span>
+        <span className="chevron" aria-hidden="true" />
       </div>
       {settings.displayMode === "detailed" && snapshot.windows.length ? (
         <div
@@ -223,10 +215,6 @@ function ProviderDetail({
   now: number;
   pinned: boolean;
 }): React.JSX.Element {
-  const ageMinutes = Math.max(
-    0,
-    Math.floor((now - snapshot.updatedAt) / 60_000),
-  );
   return (
     <aside
       className="provider-detail"
@@ -239,7 +227,7 @@ function ProviderDetail({
           {snapshot.plan ? <span className="plan">{snapshot.plan}</span> : null}
         </div>
         <span>
-          {ageMinutes ? `Updated ${ageMinutes}m ago` : "Updated just now"}
+          {formatAge(snapshot.updatedAt, now, "just now")}
           {pinned ? " · pinned" : ""}
         </span>
       </header>
@@ -432,7 +420,7 @@ function Settings({
       </Group>
       <Group title="Window">
         <div className="setting-row">
-          <span>Drag the header to move the popup</span>
+          <span>Drag the title bar to move the popup</span>
           <button
             className="row-button"
             type="button"
@@ -595,7 +583,12 @@ export default function App(): React.JSX.Element {
   };
 
   return (
-    <main className={selected ? "has-detail" : ""}>
+    // Hover is only dropped when the pointer leaves the whole popover: the detail pane arriving
+    // under the pointer used to count as leaving the row, which closed and reopened it forever.
+    <main
+      className={selected ? "has-detail" : ""}
+      onMouseLeave={() => setHoveredProvider(null)}
+    >
       <section className="master" ref={master}>
         <header className="topbar" data-tauri-drag-region="deep">
           {view === "settings" ? (
@@ -605,9 +598,7 @@ export default function App(): React.JSX.Element {
               type="button"
               aria-label="Back to usage"
               onClick={() => setView("usage")}
-            >
-              ‹
-            </button>
+            />
           ) : null}
           <h1>{view === "usage" ? "Usage" : "Settings"}</h1>
           <div className="header-actions">
@@ -664,11 +655,7 @@ export default function App(): React.JSX.Element {
                 </button>
               ))}
             </div>
-            <div
-              className="provider-list"
-              aria-live="polite"
-              onMouseLeave={() => setHoveredProvider(null)}
-            >
+            <div className="provider-list" aria-live="polite">
               {providers.length ? (
                 providers.map((snapshot) => (
                   <ProviderRow
