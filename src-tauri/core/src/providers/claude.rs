@@ -234,7 +234,7 @@ impl UsageProvider for ClaudeProvider {
                 .get("https://api.anthropic.com/api/oauth/usage")
                 .bearer_auth(token)
                 .header("anthropic-beta", "oauth-2025-04-20")
-                .header("user-agent", "trayci/0.3.0");
+                .header("user-agent", concat!("trayci/", env!("CARGO_PKG_VERSION")));
             let response = tokio::select! { _ = context.cancellation.cancelled() => return Err(ProviderError::new(ProviderErrorKind::Aborted, "Cancelled")), result = request.send() => result };
             if let Ok(response) = response {
                 if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {

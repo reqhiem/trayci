@@ -1,13 +1,23 @@
 use async_trait::async_trait;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    time::{SystemTime, UNIX_EPOCH},
+};
+use tokio::sync::Semaphore;
 use trayci_core::{
-    cli::run_cli, BuiltInProviderSettingsPatch, CacheRepository, NotificationSettings,
-    ProviderDetection, ProviderDetectionStatus, ProviderError, ProviderErrorKind,
-    ProviderSettingsPatch, ProviderUsageSnapshot, QuotaNotifier, SettingsRepository, Theme,
-    TrayciSettings, TrayciSettingsPatch, UsageFetchContext, UsageFetchReason, UsageProvider,
-    UsageService, UsageSource, UsageState, UsageStatus, UsageWindow,
+    cli::run_cli,
+    service::{refresh_reason, should_fetch, STALE_AFTER_MS},
+    BuiltInProviderSettingsPatch, CacheRepository, NotificationSettings, ProviderDetection,
+    ProviderDetectionStatus, ProviderError, ProviderErrorKind, ProviderSettingsPatch,
+    ProviderUsageSnapshot, QuotaNotifier, SettingsRepository, Theme, TrayciSettings,
+    TrayciSettingsPatch, UsageFetchContext, UsageFetchReason, UsageProvider, UsageService,
+    UsageSource, UsageState, UsageStatus, UsageWindow,
 };
 
 fn snapshot(percent: f64, status: UsageStatus) -> ProviderUsageSnapshot {
@@ -111,7 +121,7 @@ async fn settings_written_before_theme_and_font_scale_keep_their_values() {
 }
 
 #[tokio::test]
-async fn cache_loads_valid_entries_as_normalized_stale_data() {
+async fn cache_loads_valid_entries_and_ages_them_into_stale() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("cache.json");
     let repository = CacheRepository::new(&path);
@@ -119,11 +129,13 @@ async fn cache_loads_valid_entries_as_normalized_stale_data() {
     providers.insert("claude".into(), snapshot(130.0, UsageStatus::Ok));
     repository.save(&providers).await.unwrap();
 
-    let loaded = repository.load().await;
-    let claude = &loaded["claude"];
-    assert_eq!(claude.status, UsageStatus::Stale);
-    assert_eq!(claude.source, Some(UsageSource::Cache));
-    assert_eq!(claude.windows[0].used_percent, 100.0);
+    let fresh = repository.load(1_000 + STALE_AFTER_MS).await;
+    assert_eq!(fresh["claude"].status, UsageStatus::Ok);
+    assert_eq!(fresh["claude"].source, Some(UsageSource::Cache));
+    assert_eq!(fresh["claude"].windows[0].used_percent, 100.0);
+
+    let stale = repository.load(1_001 + STALE_AFTER_MS).await;
+    assert_eq!(stale["claude"].status, UsageStatus::Stale);
 }
 
 #[test]
@@ -215,6 +227,310 @@ async fn cli_json_uses_the_typescript_contract_without_internal_errors() {
     assert!(value["providers"]["claude"]["updatedAt"].is_number());
     assert_eq!(value["providers"]["claude"]["error"], "Usage unavailable");
     assert!(!output.contains("secret upstream detail"));
+}
+
+/// A provider under the test's control: it counts its calls, answers from a script, and only
+/// answers once the test hands it a permit, so nothing here depends on a real account or a clock.
+struct Scripted {
+    id: &'static str,
+    calls: Arc<AtomicUsize>,
+    gate: Arc<Semaphore>,
+    answer: Box<dyn Fn(usize) -> Result<ProviderUsageSnapshot, ProviderError> + Send + Sync>,
+}
+
+impl Scripted {
+    fn new(
+        id: &'static str,
+        answer: impl Fn(usize) -> Result<ProviderUsageSnapshot, ProviderError> + Send + Sync + 'static,
+    ) -> (Self, Arc<AtomicUsize>) {
+        let calls = Arc::new(AtomicUsize::new(0));
+        (
+            Self {
+                id,
+                calls: Arc::clone(&calls),
+                gate: Arc::new(Semaphore::new(Semaphore::MAX_PERMITS)),
+                answer: Box::new(answer),
+            },
+            calls,
+        )
+    }
+
+    fn gated(mut self, gate: Arc<Semaphore>) -> Self {
+        self.gate = gate;
+        self
+    }
+}
+
+#[async_trait]
+impl UsageProvider for Scripted {
+    fn id(&self) -> &'static str {
+        self.id
+    }
+
+    fn display_name(&self) -> &'static str {
+        "Scripted"
+    }
+
+    async fn detect(&self) -> ProviderDetection {
+        ProviderDetection {
+            provider: self.id().into(),
+            status: ProviderDetectionStatus::Available,
+            executable_path: None,
+        }
+    }
+
+    async fn fetch_usage(
+        &self,
+        context: &UsageFetchContext,
+    ) -> Result<ProviderUsageSnapshot, ProviderError> {
+        let call = self.calls.fetch_add(1, Ordering::SeqCst);
+        self.gate.acquire().await.unwrap().forget();
+        (self.answer)(call).map(|mut value| {
+            value.provider = self.id().into();
+            value.updated_at = context.now;
+            value
+        })
+    }
+}
+
+fn service(providers: Vec<Box<dyn UsageProvider>>, cache: &std::path::Path) -> Arc<UsageService> {
+    Arc::new(UsageService::with_cache(
+        providers,
+        TrayciSettings::default,
+        CacheRepository::new(cache),
+    ))
+}
+
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+async fn write_cache(path: &std::path::Path, age_ms: u64) {
+    let mut cached = snapshot(42.0, UsageStatus::Ok);
+    cached.updated_at = now_ms() - age_ms;
+    CacheRepository::new(path)
+        .save(&HashMap::from([("claude".to_string(), cached)]))
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn a_warm_cache_starts_without_a_single_provider_request() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("cache.json");
+    write_cache(&path, 60_000).await;
+    let (provider, calls) = Scripted::new("claude", |_| Ok(snapshot(1.0, UsageStatus::Ok)));
+    let service = service(vec![Box::new(provider)], &path);
+
+    service.start().await;
+    let state = service.get_state().await;
+    service.stop().await;
+
+    assert_eq!(calls.load(Ordering::SeqCst), 0, "the cache was still fresh");
+    assert_eq!(state.providers["claude"].status, UsageStatus::Ok);
+    assert_eq!(state.providers["claude"].source, Some(UsageSource::Cache));
+}
+
+#[tokio::test]
+async fn a_cache_older_than_the_poll_interval_is_refreshed_on_startup() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("cache.json");
+    write_cache(&path, 2 * 60 * 60_000).await;
+    let (provider, calls) = Scripted::new("claude", |_| Ok(snapshot(7.0, UsageStatus::Ok)));
+    let service = service(vec![Box::new(provider)], &path);
+
+    service.start().await;
+    let state = service.get_state().await;
+    service.stop().await;
+
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(state.providers["claude"].source, Some(UsageSource::Oauth));
+    assert_eq!(state.providers["claude"].windows[0].used_percent, 7.0);
+}
+
+#[tokio::test]
+async fn disabling_a_backing_off_provider_leaves_no_retry_behind() {
+    let directory = tempfile::tempdir().unwrap();
+    let settings = Arc::new(std::sync::Mutex::new(TrayciSettings::default()));
+    let (failing, _) = Scripted::new("claude", |_| {
+        Err(ProviderError::new(ProviderErrorKind::Network, "offline").retry_at(0))
+    });
+    let shared = Arc::clone(&settings);
+    let service = Arc::new(UsageService::with_cache(
+        vec![Box::new(failing)],
+        move || shared.lock().expect("settings lock").clone(),
+        CacheRepository::new(directory.path().join("cache.json")),
+    ));
+
+    service.refresh_all(UsageFetchReason::Startup).await;
+    assert!(
+        service.has_due_retry(now_ms()).await,
+        "the failure is owed a retry"
+    );
+
+    settings
+        .lock()
+        .expect("settings lock")
+        .providers
+        .claude
+        .enabled = false;
+    service.settings_changed(true).await;
+
+    assert!(
+        !service.has_due_retry(now_ms()).await,
+        "a disabled provider must not keep waking the poll loop every second"
+    );
+    assert!(service.get_state().await.providers.is_empty());
+}
+
+#[tokio::test]
+async fn a_retry_recovers_its_own_provider_without_calling_the_healthy_one() {
+    let directory = tempfile::tempdir().unwrap();
+    let (failing, failing_calls) = Scripted::new("claude", |call| {
+        if call == 0 {
+            Err(ProviderError::new(ProviderErrorKind::Network, "offline").retry_at(0))
+        } else {
+            Ok(snapshot(12.0, UsageStatus::Ok))
+        }
+    });
+    let (healthy, healthy_calls) = Scripted::new("codex", |_| Ok(snapshot(3.0, UsageStatus::Ok)));
+    let service = service(
+        vec![Box::new(failing), Box::new(healthy)],
+        &directory.path().join("cache.json"),
+    );
+
+    let first = service.refresh_all(UsageFetchReason::Startup).await;
+    assert_eq!(first.providers["claude"].status, UsageStatus::Error);
+    assert_eq!(
+        first.providers["claude"].error.as_deref(),
+        Some("Usage unavailable")
+    );
+    assert_eq!(healthy_calls.load(Ordering::SeqCst), 1);
+
+    let recovered = service.refresh_all(UsageFetchReason::Retry).await;
+    assert_eq!(recovered.providers["claude"].status, UsageStatus::Ok);
+    assert_eq!(failing_calls.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        healthy_calls.load(Ordering::SeqCst),
+        1,
+        "a retry cycle must not drag a healthy provider onto the network"
+    );
+
+    service.refresh_all(UsageFetchReason::Retry).await;
+    assert_eq!(
+        failing_calls.load(Ordering::SeqCst),
+        2,
+        "nothing is owed a retry"
+    );
+}
+
+#[tokio::test]
+async fn concurrent_manual_refreshes_collapse_into_one_extra_cycle() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("cache.json");
+    write_cache(&path, 60_000).await;
+    let gate = Arc::new(Semaphore::new(0));
+    let (provider, calls) = Scripted::new("claude", |_| Ok(snapshot(5.0, UsageStatus::Ok)));
+    let service = service(vec![Box::new(provider.gated(Arc::clone(&gate)))], &path);
+    service.start().await;
+
+    // The test runtime is single threaded, so `join!` parks the first refresh on the gate and lets
+    // the other two queue behind it before the last future opens the gate.
+    tokio::join!(
+        service.refresh_all(UsageFetchReason::Manual),
+        service.refresh_all(UsageFetchReason::Manual),
+        service.refresh_all(UsageFetchReason::Manual),
+        async { gate.add_permits(8) },
+    );
+    service.stop().await;
+
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        2,
+        "two refreshes waiting on a third collapse into a single follow-up cycle"
+    );
+}
+
+#[test]
+fn a_resume_only_refreshes_when_the_setting_allows_it() {
+    let gap = 5 * 60_000;
+    assert_eq!(
+        refresh_reason(gap, true, false, false),
+        Some(UsageFetchReason::Resume)
+    );
+    assert_eq!(refresh_reason(gap, false, false, false), None);
+    assert_eq!(
+        refresh_reason(gap, false, false, true),
+        Some(UsageFetchReason::Poll),
+        "a disabled resume still polls on its own schedule"
+    );
+    assert_eq!(
+        refresh_reason(1_000, true, true, true),
+        Some(UsageFetchReason::Retry)
+    );
+    assert_eq!(refresh_reason(1_000, true, false, false), None);
+}
+
+#[test]
+fn only_a_manual_refresh_overrides_a_backoff_we_invented() {
+    let interval = 15 * 60_000;
+    let ours = Some((9_000, false));
+    let theirs = Some((9_000, true));
+
+    assert!(should_fetch(
+        UsageFetchReason::Manual,
+        ours,
+        None,
+        1_000,
+        interval
+    ));
+    assert!(!should_fetch(
+        UsageFetchReason::Manual,
+        theirs,
+        None,
+        1_000,
+        interval
+    ));
+    assert!(!should_fetch(
+        UsageFetchReason::Poll,
+        ours,
+        None,
+        1_000,
+        interval
+    ));
+    assert!(should_fetch(
+        UsageFetchReason::Retry,
+        theirs,
+        None,
+        9_000,
+        interval
+    ));
+
+    let fresh = Some(1_000);
+    assert!(!should_fetch(
+        UsageFetchReason::Poll,
+        None,
+        fresh,
+        1_000 + interval - 1,
+        interval
+    ));
+    assert!(should_fetch(
+        UsageFetchReason::Poll,
+        None,
+        fresh,
+        1_000 + interval,
+        interval
+    ));
+    assert!(should_fetch(
+        UsageFetchReason::Startup,
+        None,
+        None,
+        1_000,
+        interval
+    ));
 }
 
 #[tokio::test]

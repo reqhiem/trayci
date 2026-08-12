@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatAge,
   formatResetCountdown,
+  statusSummary,
   tightestWindow,
 } from "../../src/shared/presentation";
 import type { ProviderUsageSnapshot } from "../../src/shared/types";
@@ -43,5 +45,29 @@ describe("presentation helpers", () => {
     expect(formatResetCountdown(0, 0)).toBe("now");
     expect(formatResetCountdown(12 * 60_000, 0)).toBe("12m");
     expect(formatResetCountdown((26 * 60 + 5) * 60_000, 0)).toBe("1d 2h");
+  });
+
+  it("reports how old a stale reading is instead of when it resets", () => {
+    const stale = { ...snapshot, status: "stale" as const, updatedAt: 0 };
+    expect(statusSummary(stale, 7 * 60_000)).toEqual({
+      text: "Updated 7m ago",
+      stale: true,
+    });
+    expect(formatAge(0, 0, "just now")).toBe("Updated just now");
+  });
+
+  it("prefers the tightest reset while a reading is current", () => {
+    const fresh = {
+      ...snapshot,
+      windows: snapshot.windows.map((window) => ({
+        ...window,
+        resetsAt: 90 * 60_000,
+      })),
+    };
+    expect(statusSummary(fresh, 0)).toEqual({
+      text: "Resets in 1h 30m",
+      stale: false,
+    });
+    expect(statusSummary({ ...snapshot, windows: [] }, 0)).toBeNull();
   });
 });

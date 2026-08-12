@@ -15,6 +15,51 @@ use tokio_util::sync::CancellationToken;
 pub const STALE_AFTER_MS: u64 = 30 * 60_000;
 pub const MAX_STALE_RETENTION_MS: u64 = 24 * 60 * 60_000;
 pub const BACKOFF_MS: [u64; 5] = [30_000, 60_000, 120_000, 300_000, 900_000];
+/// The poll loop ticks every second, so a longer gap means the machine was suspended.
+pub const RESUME_GAP_MS: u64 = 60_000;
+
+/// When a provider is waiting on a retry: the timestamp, and whether the provider itself asked for
+/// it (a `retry-after` header). A retry we invented is ours to skip; one the server dictated is not.
+type Retry = (u64, bool);
+
+/// Which providers a refresh cycle actually calls. Every reason but a manual one reuses a snapshot
+/// that is younger than one poll interval, so a startup with a warm cache and a retry cycle for one
+/// failing provider stay off the network instead of dragging every provider along with them.
+pub fn should_fetch(
+    reason: UsageFetchReason,
+    retry: Option<Retry>,
+    updated_at: Option<u64>,
+    now: u64,
+    interval_ms: u64,
+) -> bool {
+    if let Some((retry_at, from_provider)) = retry {
+        let manual = reason == UsageFetchReason::Manual;
+        return retry_at <= now || (manual && !from_provider);
+    }
+    match reason {
+        UsageFetchReason::Retry => false,
+        UsageFetchReason::Manual | UsageFetchReason::Resume | UsageFetchReason::PopoverOpen => true,
+        _ => updated_at.map_or(true, |updated| now.saturating_sub(updated) >= interval_ms),
+    }
+}
+
+/// Why the poll loop would refresh on this tick, if at all.
+pub fn refresh_reason(
+    gap_ms: u64,
+    refresh_on_resume: bool,
+    retry_due: bool,
+    poll_due: bool,
+) -> Option<UsageFetchReason> {
+    if gap_ms > RESUME_GAP_MS && refresh_on_resume {
+        Some(UsageFetchReason::Resume)
+    } else if retry_due {
+        Some(UsageFetchReason::Retry)
+    } else if poll_due {
+        Some(UsageFetchReason::Poll)
+    } else {
+        None
+    }
+}
 
 #[async_trait]
 pub trait UsageProvider: Send + Sync {
@@ -39,7 +84,7 @@ struct RefreshCoord {
 struct Inner {
     state: UsageState,
     failures: HashMap<ProviderId, usize>,
-    next_retry: HashMap<ProviderId, u64>,
+    next_retry: HashMap<ProviderId, Retry>,
     stopped: bool,
     cancellation: Option<CancellationToken>,
 }
@@ -89,7 +134,7 @@ impl UsageService {
     }
 
     pub async fn start(self: &Arc<Self>) {
-        let cached = self.cache.load().await;
+        let cached = self.cache.load(now_ms()).await;
         {
             let enabled = self.enabled_provider_ids();
             let mut inner = self.inner.lock().await;
@@ -202,14 +247,33 @@ impl UsageService {
             .await)
     }
 
-    pub async fn settings_changed(self: &Arc<Self>) {
+    /// `refresh` only when the change can alter what a provider reports. Cosmetic settings still
+    /// have to emit, so the tray tooltip follows them, but must never cost a provider request.
+    pub async fn settings_changed(self: &Arc<Self>, refresh: bool) {
         let enabled = self.enabled_provider_ids();
         {
             let mut inner = self.inner.lock().await;
             inner.state.providers.retain(|id, _| enabled.contains(id));
+            // A provider disabled while it was backing off would otherwise keep its retry due for
+            // the rest of the session, waking the poll loop every second for a cycle that can
+            // fetch nothing, and leaving a stale failure count for whenever it is switched back on.
+            inner.failures.retain(|id, _| enabled.contains(id));
+            inner.next_retry.retain(|id, _| enabled.contains(id));
         }
         self.emit().await;
-        self.refresh_all(UsageFetchReason::Manual).await;
+        if refresh {
+            self.refresh_all(UsageFetchReason::Manual).await;
+        }
+    }
+
+    /// Whether any provider is owed a retry now. The poll loop asks every second.
+    pub async fn has_due_retry(&self, now: u64) -> bool {
+        self.inner
+            .lock()
+            .await
+            .next_retry
+            .values()
+            .any(|(retry, _)| *retry <= now)
     }
 
     async fn perform_refresh(&self, reason: UsageFetchReason) {
@@ -224,14 +288,24 @@ impl UsageService {
         self.emit().await;
 
         let enabled = self.enabled_provider_ids();
+        let interval_ms = (self.settings)().poll_interval_minutes * 60_000;
         let due = {
             let inner = self.inner.lock().await;
             self.providers
                 .iter()
                 .filter(|provider| enabled.iter().any(|id| id == provider.id()))
                 .filter(|provider| {
-                    reason == UsageFetchReason::Manual
-                        || inner.next_retry.get(provider.id()).copied().unwrap_or(0) <= started_at
+                    should_fetch(
+                        reason,
+                        inner.next_retry.get(provider.id()).copied(),
+                        inner
+                            .state
+                            .providers
+                            .get(provider.id())
+                            .map(|snapshot| snapshot.updated_at),
+                        started_at,
+                        interval_ms,
+                    )
                 })
                 .collect::<Vec<_>>()
         };
@@ -315,7 +389,9 @@ impl UsageService {
                     let retry_at = error.retry_at.unwrap_or_else(|| {
                         now + BACKOFF_MS[(*count - 1).min(BACKOFF_MS.len() - 1)]
                     });
-                    inner.next_retry.insert(provider.id().into(), retry_at);
+                    inner
+                        .next_retry
+                        .insert(provider.id().into(), (retry_at, error.retry_at.is_some()));
                 }
                 match previous.filter(|snapshot| {
                     !definitive
@@ -358,29 +434,22 @@ impl UsageService {
                 return;
             }
             let now = now_ms();
-            let interval = (self.settings)().poll_interval_minutes * 60_000;
-            let resume = (self.settings)().refresh_on_resume
-                && now.saturating_sub(last_tick) > interval + 30_000;
+            let settings = (self.settings)();
+            let interval = settings.poll_interval_minutes * 60_000;
+            let gap = now.saturating_sub(last_tick);
             last_tick = now;
-            let (poll_due, retry_due) = {
+            let poll_due = {
                 let inner = self.inner.lock().await;
-                (
-                    inner
-                        .state
-                        .last_refresh_completed_at
-                        .map_or(true, |completed| now >= completed + interval),
-                    inner.next_retry.values().any(|retry| *retry <= now),
-                )
+                inner
+                    .state
+                    .last_refresh_completed_at
+                    .map_or(true, |completed| now >= completed + interval)
             };
-            if resume || retry_due || poll_due {
-                self.refresh_all(if resume {
-                    UsageFetchReason::Resume
-                } else if retry_due {
-                    UsageFetchReason::Retry
-                } else {
-                    UsageFetchReason::Poll
-                })
-                .await;
+            let retry_due = self.has_due_retry(now).await;
+            if let Some(reason) =
+                refresh_reason(gap, settings.refresh_on_resume, retry_due, poll_due)
+            {
+                self.refresh_all(reason).await;
             }
         }
     }

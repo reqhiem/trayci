@@ -90,8 +90,11 @@ main {
   width: 100%;
   background: var(--ink);
 }
+/* Fixed and matching COLUMN_WIDTH in popover.rs. A master column measured as a share of the
+   window narrowed for the frames between opening the detail and the window actually growing,
+   which slid the row out from under the pointer and flickered the detail open and shut. */
 main.has-detail {
-  grid-template-columns: minmax(340px, 53%) 1fr;
+  grid-template-columns: minmax(340px, 360px) 1fr;
 }
 .master {
   min-width: 0;
@@ -104,6 +107,11 @@ main.has-detail {
   gap: 6px;
   padding: 0 8px;
   border-bottom: 1px solid var(--line);
+  cursor: grab;
+  user-select: none;
+}
+.topbar:active {
+  cursor: grabbing;
 }
 h1,
 h2 {
@@ -139,7 +147,31 @@ h1 {
 .back-button {
   width: 16px;
   color: var(--paper);
-  font-size: 22px;
+}
+
+/* One chevron for rows, the back button and the settings groups: a rotated corner, not a glyph,
+   so every arrow in the popover has the same weight and sits on the same optical centre. */
+.back-button::before,
+.settings-group > summary::after {
+  content: "";
+}
+.chevron,
+.back-button::before,
+.settings-group > summary::after {
+  display: block;
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border: 1.4px solid currentColor;
+  border-width: 1.4px 1.4px 0 0;
+}
+.chevron {
+  margin-left: auto;
+  color: var(--muted);
+  transform: translateX(-2px) rotate(45deg);
+}
+.back-button::before {
+  transform: translateX(1px) rotate(-135deg);
 }
 .spin {
   display: inline-block;
@@ -264,13 +296,6 @@ h1 {
 .compact-value strong {
   color: var(--paper);
   font-size: 11px;
-}
-.chevron {
-  margin-left: auto;
-  color: var(--muted);
-  font-size: 20px;
-  font-weight: 300;
-  line-height: 0.5;
 }
 .compact-value + .chevron {
   margin-left: 0;
@@ -464,15 +489,12 @@ h1 {
   display: none;
 }
 .settings-group > summary::after {
-  content: "›";
   color: var(--muted);
-  font-size: 15px;
-  line-height: 0.6;
-  transform: rotate(90deg);
+  transform: translateY(-2px) rotate(135deg);
   transition: transform 0.15s ease;
 }
 .settings-group[open] > summary::after {
-  transform: rotate(-90deg);
+  transform: translateY(1px) rotate(-45deg);
 }
 .settings-group > summary:focus-visible {
   outline: 2px solid var(--accent);

@@ -24,6 +24,7 @@ pub async fn update_settings(
     patch: TrayciSettingsPatch,
 ) -> Result<TrayciSettings, String> {
     let cleared_position = patch.window_position == Some(None);
+    let previous = state.settings.lock().expect("settings lock").clone();
     let settings = state
         .repository
         .lock()
@@ -39,7 +40,12 @@ pub async fn update_settings(
     autostart::set_enabled(settings.start_on_login)
         .await
         .map_err(|error| error.to_string())?;
-    state.service.settings_changed().await;
+    // Themes, text size and percentage style change nothing a provider would answer differently,
+    // so they must not spend a request: toggling them used to refresh every provider.
+    state
+        .service
+        .settings_changed(previous.providers != settings.providers)
+        .await;
     Ok(settings)
 }
 
