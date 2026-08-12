@@ -352,6 +352,41 @@ async fn a_cache_older_than_the_poll_interval_is_refreshed_on_startup() {
 }
 
 #[tokio::test]
+async fn disabling_a_backing_off_provider_leaves_no_retry_behind() {
+    let directory = tempfile::tempdir().unwrap();
+    let settings = Arc::new(std::sync::Mutex::new(TrayciSettings::default()));
+    let (failing, _) = Scripted::new("claude", |_| {
+        Err(ProviderError::new(ProviderErrorKind::Network, "offline").retry_at(0))
+    });
+    let shared = Arc::clone(&settings);
+    let service = Arc::new(UsageService::with_cache(
+        vec![Box::new(failing)],
+        move || shared.lock().expect("settings lock").clone(),
+        CacheRepository::new(directory.path().join("cache.json")),
+    ));
+
+    service.refresh_all(UsageFetchReason::Startup).await;
+    assert!(
+        service.has_due_retry(now_ms()).await,
+        "the failure is owed a retry"
+    );
+
+    settings
+        .lock()
+        .expect("settings lock")
+        .providers
+        .claude
+        .enabled = false;
+    service.settings_changed(true).await;
+
+    assert!(
+        !service.has_due_retry(now_ms()).await,
+        "a disabled provider must not keep waking the poll loop every second"
+    );
+    assert!(service.get_state().await.providers.is_empty());
+}
+
+#[tokio::test]
 async fn a_retry_recovers_its_own_provider_without_calling_the_healthy_one() {
     let directory = tempfile::tempdir().unwrap();
     let (failing, failing_calls) = Scripted::new("claude", |call| {

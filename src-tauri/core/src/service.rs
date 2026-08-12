@@ -254,11 +254,26 @@ impl UsageService {
         {
             let mut inner = self.inner.lock().await;
             inner.state.providers.retain(|id, _| enabled.contains(id));
+            // A provider disabled while it was backing off would otherwise keep its retry due for
+            // the rest of the session, waking the poll loop every second for a cycle that can
+            // fetch nothing, and leaving a stale failure count for whenever it is switched back on.
+            inner.failures.retain(|id, _| enabled.contains(id));
+            inner.next_retry.retain(|id, _| enabled.contains(id));
         }
         self.emit().await;
         if refresh {
             self.refresh_all(UsageFetchReason::Manual).await;
         }
+    }
+
+    /// Whether any provider is owed a retry now. The poll loop asks every second.
+    pub async fn has_due_retry(&self, now: u64) -> bool {
+        self.inner
+            .lock()
+            .await
+            .next_retry
+            .values()
+            .any(|(retry, _)| *retry <= now)
     }
 
     async fn perform_refresh(&self, reason: UsageFetchReason) {
@@ -423,16 +438,14 @@ impl UsageService {
             let interval = settings.poll_interval_minutes * 60_000;
             let gap = now.saturating_sub(last_tick);
             last_tick = now;
-            let (poll_due, retry_due) = {
+            let poll_due = {
                 let inner = self.inner.lock().await;
-                (
-                    inner
-                        .state
-                        .last_refresh_completed_at
-                        .map_or(true, |completed| now >= completed + interval),
-                    inner.next_retry.values().any(|(retry, _)| *retry <= now),
-                )
+                inner
+                    .state
+                    .last_refresh_completed_at
+                    .map_or(true, |completed| now >= completed + interval)
             };
+            let retry_due = self.has_due_retry(now).await;
             if let Some(reason) =
                 refresh_reason(gap, settings.refresh_on_resume, retry_due, poll_due)
             {
