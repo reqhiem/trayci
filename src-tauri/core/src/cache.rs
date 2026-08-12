@@ -33,7 +33,9 @@ impl CacheRepository {
         Self { path: path.into() }
     }
 
-    pub async fn load(&self) -> HashMap<ProviderId, ProviderUsageSnapshot> {
+    /// Cached usage is only stale once it is older than [`crate::service::STALE_AFTER_MS`];
+    /// treating a snapshot from two minutes ago as stale is what made every launch re-fetch.
+    pub async fn load(&self, now: u64) -> HashMap<ProviderId, ProviderUsageSnapshot> {
         let Ok(bytes) = fs::read(&self.path).await else {
             return HashMap::new();
         };
@@ -50,7 +52,13 @@ impl CacheRepository {
                 serde_json::from_value::<ProviderUsageSnapshot>(value)
                     .ok()
                     .map(|mut snapshot| {
-                        snapshot.status = UsageStatus::Stale;
+                        snapshot.status = if now.saturating_sub(snapshot.updated_at)
+                            <= crate::service::STALE_AFTER_MS
+                        {
+                            UsageStatus::Ok
+                        } else {
+                            UsageStatus::Stale
+                        };
                         snapshot.source = Some(UsageSource::Cache);
                         snapshot.error = None;
                         (id, snapshot.normalize())
