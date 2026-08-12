@@ -17,7 +17,10 @@ Trayci is a local-first Linux system tray app that shows Claude Code, Codex, and
 ## Features
 
 - Claude Code, Codex, and Antigravity usage in a compact tray popover
-- Detailed and compact views with per-provider drill-down
+- Detailed and compact views: hover a provider to reveal its windows, click to pin them
+- Reset countdowns for every provider, including Antigravity's 5-hour and weekly limits
+- Drag the popover by its header to any spot on screen; the position sticks between sessions
+- Light and dark themes plus four text sizes
 - Automatic refresh, stale data handling, and a credential-free local cache
 - Configurable providers, polling, startup, and percentage display
 - Native `.deb` and `.AppImage` releases for Linux amd64, and NSIS installer (`.exe`) for Windows

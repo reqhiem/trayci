@@ -5,7 +5,7 @@ use std::{collections::HashMap, sync::Arc};
 use trayci_core::{
     cli::run_cli, BuiltInProviderSettingsPatch, CacheRepository, NotificationSettings,
     ProviderDetection, ProviderDetectionStatus, ProviderError, ProviderErrorKind,
-    ProviderSettingsPatch, ProviderUsageSnapshot, QuotaNotifier, SettingsRepository,
+    ProviderSettingsPatch, ProviderUsageSnapshot, QuotaNotifier, SettingsRepository, Theme,
     TrayciSettings, TrayciSettingsPatch, UsageFetchContext, UsageFetchReason, UsageProvider,
     UsageService, UsageSource, UsageState, UsageStatus, UsageWindow,
 };
@@ -78,6 +78,36 @@ async fn settings_validate_and_persist_privately() {
 
     let patch: ProviderSettingsPatch = serde_json::from_str(r#"{"executablePath":null}"#).unwrap();
     assert_eq!(patch.executable_path, Some(None));
+}
+
+#[tokio::test]
+async fn settings_written_before_theme_and_font_scale_keep_their_values() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("config.json");
+    let mut before = serde_json::to_value(TrayciSettings::default()).unwrap();
+    before["startOnLogin"] = true.into();
+    before["pollIntervalMinutes"] = 30.into();
+    before.as_object_mut().unwrap().remove("theme");
+    before.as_object_mut().unwrap().remove("fontScale");
+    tokio::fs::write(&path, serde_json::to_vec(&before).unwrap())
+        .await
+        .unwrap();
+
+    let settings = SettingsRepository::new(&path).load().await;
+    assert!(settings.start_on_login, "an old config must not be reset");
+    assert_eq!(settings.poll_interval_minutes, 30);
+    assert_eq!(settings.theme, Theme::Dark);
+    assert_eq!(settings.font_scale, 1.0);
+
+    let mut repository = SettingsRepository::new(&path);
+    repository.load().await;
+    assert!(repository
+        .update(TrayciSettingsPatch {
+            font_scale: Some(3.0),
+            ..Default::default()
+        })
+        .await
+        .is_err());
 }
 
 #[tokio::test]

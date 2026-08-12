@@ -19,9 +19,11 @@ pub fn get_settings(state: State<'_, AppState>) -> Result<TrayciSettings, String
 
 #[tauri::command]
 pub async fn update_settings(
+    app: AppHandle,
     state: State<'_, AppState>,
     patch: TrayciSettingsPatch,
 ) -> Result<TrayciSettings, String> {
+    let cleared_position = patch.window_position == Some(None);
     let settings = state
         .repository
         .lock()
@@ -30,6 +32,10 @@ pub async fn update_settings(
         .await
         .map_err(|error| error.to_string())?;
     *state.settings.lock().expect("settings lock") = settings.clone();
+    if cleared_position {
+        popover::reanchor(&app).map_err(|error| error.to_string())?;
+    }
+    popover::set_scale(&app, settings.font_scale).map_err(|error| error.to_string())?;
     autostart::set_enabled(settings.start_on_login)
         .await
         .map_err(|error| error.to_string())?;
@@ -37,8 +43,15 @@ pub async fn update_settings(
     Ok(settings)
 }
 
+/// The webview reports the start of a header drag; only then is a window move the user's.
+#[tauri::command]
+pub fn begin_popover_drag(app: AppHandle) {
+    app.state::<popover::PopoverState>().set_dragging(true);
+}
+
 #[tauri::command]
 pub fn hide_popover(app: AppHandle) -> Result<(), String> {
+    popover::save_position(&app);
     app.get_webview_window(popover::LABEL)
         .map(|window| window.hide().map_err(|error| error.to_string()))
         .unwrap_or(Ok(()))

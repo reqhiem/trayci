@@ -7,7 +7,7 @@ import type {
   UsageState,
   UsageWindow,
 } from "../../shared/types";
-import { DEFAULT_SETTINGS } from "../../shared/types";
+import { DEFAULT_SETTINGS, FONT_SCALES } from "../../shared/types";
 import {
   formatResetCountdown,
   tightestWindow,
@@ -134,14 +134,16 @@ function ProviderRow({
   snapshot,
   settings,
   now,
-  selected,
-  onSelect,
+  pinned,
+  onPin,
+  onReveal,
 }: {
   snapshot: ProviderUsageSnapshot;
   settings: TrayciSettings;
   now: number;
-  selected: boolean;
-  onSelect(): void;
+  pinned: boolean;
+  onPin(): void;
+  onReveal(): void;
 }): React.JSX.Element {
   const tightest = tightestWindow(snapshot);
   const ageMinutes = Math.max(
@@ -154,8 +156,10 @@ function ProviderRow({
       className={`provider-row provider-${snapshot.status}`}
       type="button"
       aria-busy={snapshot.status === "fetching"}
-      aria-expanded={selected}
-      onClick={onSelect}
+      aria-expanded={pinned}
+      onClick={onPin}
+      onMouseEnter={onReveal}
+      onFocus={onReveal}
     >
       <div className="provider-summary">
         <ProviderIcon provider={snapshot.provider} />
@@ -212,10 +216,12 @@ function ProviderDetail({
   snapshot,
   settings,
   now,
+  pinned,
 }: {
   snapshot: ProviderUsageSnapshot;
   settings: TrayciSettings;
   now: number;
+  pinned: boolean;
 }): React.JSX.Element {
   const ageMinutes = Math.max(
     0,
@@ -234,6 +240,7 @@ function ProviderDetail({
         </div>
         <span>
           {ageMinutes ? `Updated ${ageMinutes}m ago` : "Updated just now"}
+          {pinned ? " · pinned" : ""}
         </span>
       </header>
       <div className="detail-metrics">
@@ -275,6 +282,55 @@ function Switch({
   );
 }
 
+function Choice<Value extends string | number>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: Value;
+  options: readonly (readonly [Value, string])[];
+  onChange(value: Value): void;
+}): React.JSX.Element {
+  return (
+    <div className="setting-row">
+      <span>{label}</span>
+      <div className="choice-group" role="group" aria-label={label}>
+        {options.map(([option, text]) => (
+          <button
+            key={option}
+            type="button"
+            aria-pressed={value === option}
+            onClick={() => onChange(option)}
+          >
+            {text}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Group({
+  title,
+  open,
+  children,
+}: {
+  title: string;
+  open?: boolean;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <details className="settings-group" open={open}>
+      <summary>
+        <h2>{title}</h2>
+      </summary>
+      {children}
+    </details>
+  );
+}
+
 function Settings({
   settings,
   update,
@@ -284,8 +340,7 @@ function Settings({
 }): React.JSX.Element {
   return (
     <div className="settings-view">
-      <section className="settings-group">
-        <h2>General</h2>
+      <Group title="General" open>
         <Switch
           checked={settings.startOnLogin}
           onChange={(startOnLogin) => update({ startOnLogin })}
@@ -296,28 +351,43 @@ function Settings({
           onChange={(refreshOnResume) => update({ refreshOnResume })}
           label="Refresh after resume"
         />
-        <div className="setting-row">
-          <span>Refresh interval</span>
-          <div
-            className="choice-group"
-            role="group"
-            aria-label="Refresh interval"
-          >
-            {[5, 15, 30, 60].map((minutes) => (
-              <button
-                key={minutes}
-                type="button"
-                aria-pressed={settings.pollIntervalMinutes === minutes}
-                onClick={() => update({ pollIntervalMinutes: minutes })}
-              >
-                {minutes}m
-              </button>
-            ))}
-          </div>
-        </div>
-      </section>
-      <section className="settings-group">
-        <h2>Notifications</h2>
+        <Choice
+          label="Refresh interval"
+          value={settings.pollIntervalMinutes}
+          options={[5, 15, 30, 60].map(
+            (minutes) => [minutes, `${minutes}m`] as const,
+          )}
+          onChange={(pollIntervalMinutes) => update({ pollIntervalMinutes })}
+        />
+      </Group>
+      <Group title="Appearance" open>
+        <Choice
+          label="Theme"
+          value={settings.theme}
+          options={[
+            ["system", "Auto"],
+            ["light", "Light"],
+            ["dark", "Dark"],
+          ]}
+          onChange={(theme) => update({ theme })}
+        />
+        <Choice
+          label="Text size"
+          value={settings.fontScale}
+          options={FONT_SCALES}
+          onChange={(fontScale) => update({ fontScale })}
+        />
+        <Choice
+          label="Percentage"
+          value={settings.percentageDisplay}
+          options={[
+            ["used", "Used"],
+            ["remaining", "Remaining"],
+          ]}
+          onChange={(percentageDisplay) => update({ percentageDisplay })}
+        />
+      </Group>
+      <Group title="Notifications">
         {([50, 85, 90] as const).map((threshold) => (
           <Switch
             key={threshold}
@@ -340,9 +410,8 @@ function Settings({
           }
           label="Quota reset completes"
         />
-      </section>
-      <section className="settings-group">
-        <h2>Providers</h2>
+      </Group>
+      <Group title="Providers">
         <Switch
           checked={settings.providers.claude.enabled}
           onChange={(enabled) => update({ providers: { claude: { enabled } } })}
@@ -360,25 +429,20 @@ function Settings({
           }
           label="Antigravity"
         />
-      </section>
-      <section className="settings-group">
-        <h2>Display</h2>
+      </Group>
+      <Group title="Window">
         <div className="setting-row">
-          <span>Percentage</span>
-          <div className="choice-group" role="group" aria-label="Percentage">
-            {(["used", "remaining"] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                aria-pressed={settings.percentageDisplay === mode}
-                onClick={() => update({ percentageDisplay: mode })}
-              >
-                {mode === "used" ? "Used" : "Remaining"}
-              </button>
-            ))}
-          </div>
+          <span>Drag the header to move the popup</span>
+          <button
+            className="row-button"
+            type="button"
+            disabled={!settings.windowPosition}
+            onClick={() => update({ windowPosition: null })}
+          >
+            Reset position
+          </button>
         </div>
-      </section>
+      </Group>
       <button
         className="quit-button"
         type="button"
@@ -394,12 +458,13 @@ export default function App(): React.JSX.Element {
   const [state, setState] = useState(EMPTY_STATE);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [view, setView] = useState<"usage" | "settings">("usage");
-  const [selectedProvider, setSelectedProvider] = useState<ProviderId | null>(
+  const [pinnedProvider, setPinnedProvider] = useState<ProviderId | null>(null);
+  const [hoveredProvider, setHoveredProvider] = useState<ProviderId | null>(
     null,
   );
   const [now, setNow] = useState(Date.now());
   const [error, setError] = useState<string | null>(null);
-  const root = useRef<HTMLElement>(null);
+  const master = useRef<HTMLElement>(null);
   const backButton = useRef<HTMLButtonElement>(null);
   const settingsButton = useRef<HTMLButtonElement>(null);
   const skipViewFocus = useRef(true);
@@ -428,14 +493,39 @@ export default function App(): React.JSX.Element {
   }, [view]);
 
   useEffect(() => {
+    const system = window.matchMedia("(prefers-color-scheme: light)");
+    const apply = (): void => {
+      document.documentElement.dataset.theme =
+        settings.theme === "system"
+          ? system.matches
+            ? "light"
+            : "dark"
+          : settings.theme;
+    };
+    apply();
+    system.addEventListener("change", apply);
+    return () => system.removeEventListener("change", apply);
+  }, [settings.theme]);
+
+  // Tauri moves the window itself; the backend only needs to know the move was ours to keep.
+  useEffect(() => {
+    const start = (event: MouseEvent): void => {
+      if ((event.target as HTMLElement).closest?.("[data-tauri-drag-region]"))
+        void trayci.app.beginDrag();
+    };
+    window.addEventListener("mousedown", start);
+    return () => window.removeEventListener("mousedown", start);
+  }, []);
+
+  useEffect(() => {
     const escape = (event: KeyboardEvent): void => {
       if (event.key !== "Escape") return;
-      if (view === "usage" && selectedProvider) setSelectedProvider(null);
+      if (view === "usage" && pinnedProvider) setPinnedProvider(null);
       else void trayci.app.hidePopover();
     };
     window.addEventListener("keydown", escape);
     return () => window.removeEventListener("keydown", escape);
-  }, [view, selectedProvider]);
+  }, [view, pinnedProvider]);
 
   const providers = useMemo(
     () =>
@@ -446,15 +536,17 @@ export default function App(): React.JSX.Element {
         .sort((a, b) => maximum(b) - maximum(a)),
     [state.providers],
   );
+  const revealed = pinnedProvider ?? hoveredProvider;
   const selected =
     view === "usage"
-      ? (providers.find((snapshot) => snapshot.provider === selectedProvider) ??
-        null)
+      ? (providers.find((snapshot) => snapshot.provider === revealed) ?? null)
       : null;
   const targetWidth = selected ? 680 : 360;
 
+  // Measured on the master column alone: the detail pane scrolls instead of resizing the window,
+  // so revealing it on hover never shifts the rows under the pointer.
   useLayoutEffect(() => {
-    const element = root.current;
+    const element = master.current;
     if (!element) return;
     let frame = 0;
     const resize = (): void => {
@@ -501,14 +593,9 @@ export default function App(): React.JSX.Element {
       });
   };
 
-  const setMode = (displayMode: TrayciSettings["displayMode"]): void => {
-    if (displayMode === "compact") setSelectedProvider(null);
-    update({ displayMode });
-  };
-
   return (
-    <main ref={root} className={selected ? "has-detail" : ""}>
-      <section className="master">
+    <main className={selected ? "has-detail" : ""}>
+      <section className="master" ref={master}>
         <header className="topbar" data-tauri-drag-region>
           {view === "settings" ? (
             <button
@@ -570,13 +657,17 @@ export default function App(): React.JSX.Element {
                   key={mode}
                   type="button"
                   aria-pressed={settings.displayMode === mode}
-                  onClick={() => setMode(mode)}
+                  onClick={() => update({ displayMode: mode })}
                 >
                   {mode === "detailed" ? "Detailed" : "Compact"}
                 </button>
               ))}
             </div>
-            <div className="provider-list" aria-live="polite">
+            <div
+              className="provider-list"
+              aria-live="polite"
+              onMouseLeave={() => setHoveredProvider(null)}
+            >
               {providers.length ? (
                 providers.map((snapshot) => (
                   <ProviderRow
@@ -584,10 +675,11 @@ export default function App(): React.JSX.Element {
                     snapshot={snapshot}
                     settings={settings}
                     now={now}
-                    selected={selectedProvider === snapshot.provider}
-                    onSelect={() =>
-                      setSelectedProvider(
-                        selectedProvider === snapshot.provider
+                    pinned={pinnedProvider === snapshot.provider}
+                    onReveal={() => setHoveredProvider(snapshot.provider)}
+                    onPin={() =>
+                      setPinnedProvider(
+                        pinnedProvider === snapshot.provider
                           ? null
                           : snapshot.provider,
                       )
@@ -604,7 +696,12 @@ export default function App(): React.JSX.Element {
         )}
       </section>
       {view === "usage" && selected ? (
-        <ProviderDetail snapshot={selected} settings={settings} now={now} />
+        <ProviderDetail
+          snapshot={selected}
+          settings={settings}
+          now={now}
+          pinned={pinnedProvider === selected.provider}
+        />
       ) : null}
     </main>
   );

@@ -1,6 +1,6 @@
 use crate::model::{
     NotificationSettingsPatch, ProviderSettings, ProviderSettingsPatch, TrayciSettings,
-    TrayciSettingsPatch,
+    TrayciSettingsPatch, FONT_SCALE_RANGE,
 };
 use std::{io, path::PathBuf};
 use tokio::fs;
@@ -105,6 +105,12 @@ pub fn merge(
     if let Some(value) = patch.window_position {
         settings.window_position = value;
     }
+    if let Some(value) = patch.theme {
+        settings.theme = value;
+    }
+    if let Some(value) = patch.font_scale {
+        settings.font_scale = value;
+    }
     settings.schema_version = 1;
     validate(settings)
 }
@@ -152,6 +158,11 @@ fn validate(settings: &TrayciSettings) -> Result<(), SettingsError> {
     if !(5..=1440).contains(&settings.poll_interval_minutes) {
         return Err(SettingsError::Invalid(
             "pollIntervalMinutes must be between 5 and 1440".into(),
+        ));
+    }
+    if !FONT_SCALE_RANGE.contains(&settings.font_scale) {
+        return Err(SettingsError::Invalid(
+            "fontScale must be between 0.8 and 1.6".into(),
         ));
     }
     for provider in [

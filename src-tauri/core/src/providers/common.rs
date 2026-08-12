@@ -243,23 +243,48 @@ pub fn epoch_ms(value: &serde_json::Value) -> Option<u64> {
     }
 }
 
+/// Reads "resets in 2h 15m" and the "refreshes in 89h 53m" wording Antigravity uses.
 pub fn reset_from_text(text: &str, now: u64) -> Option<u64> {
+    static KEYWORD: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(?i)\b(?:resets?|refreshe?s?)\b").unwrap());
+    // A leading run of `<number><unit>` pairs, e.g. " in 4d 2h".
     static DURATION: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"(?i)(?:resets?\s+in\s+)?(?:(\d+)\s*d(?:ays?)?)?\s*(?:(\d+)\s*h(?:ours?|rs?)?)?\s*(?:(\d+)\s*m(?:inutes?|ins?)?)?").unwrap()
+        Regex::new(
+            r"(?i)^\s*(?:in\s+)?(?:\d+\s*(?:d(?:ays?)?|h(?:ours?|rs?)?|m(?:in(?:ute)?s?)?)\s*)+",
+        )
+        .unwrap()
     });
-    if let Some(captures) = DURATION.captures(text) {
-        let minutes = [1, 2, 3].map(|i| {
-            captures
-                .get(i)
-                .and_then(|v| v.as_str().parse::<u64>().ok())
-                .unwrap_or(0)
-        });
-        let total = minutes[0] * 1440 + minutes[1] * 60 + minutes[2];
-        if total > 0 {
-            return Some(now + total * 60_000);
-        }
+    static UNIT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)(\d+)\s*([dhm])").unwrap());
+
+    if let Some(timestamp) = epoch_ms(&serde_json::Value::String(text.to_owned())) {
+        return Some(timestamp);
     }
-    epoch_ms(&serde_json::Value::String(text.to_owned()))
+    // Only the run of units right after the keyword counts, so trailing copy cannot inflate it.
+    let tail = KEYWORD
+        .find(text)
+        .map_or(text, |value| &text[value.end()..]);
+    let minutes: u64 = UNIT
+        .captures_iter(DURATION.find(tail)?.as_str())
+        .map(|unit| {
+            let value = unit[1].parse::<u64>().unwrap_or(0);
+            match unit[2].as_bytes()[0] | 0x20 {
+                b'd' => value * 1440,
+                b'h' => value * 60,
+                _ => value,
+            }
+        })
+        .sum();
+    (minutes > 0).then(|| now + minutes * 60_000)
+}
+
+/// Finds "Resets in 2h 15m" or "Refreshes in 89h 53m" inside a longer line.
+pub fn reset_phrase(text: &str) -> Option<String> {
+    static PHRASE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"(?i)(?:resets?|refreshe?s?)\s+(?:in\s+)?(?:\d+\s*[a-z]+\s*)+").unwrap()
+    });
+    PHRASE
+        .find(text)
+        .map(|value| value.as_str().trim().to_owned())
 }
 
 pub fn title_case(value: &str) -> String {
