@@ -50,6 +50,17 @@ impl PopoverState {
     }
 }
 
+/// GTK reports a Wayland toplevel as sitting at its surface origin and cannot move it back, so a
+/// move reported there is neither the position the user sees nor one we could ever restore. Storing
+/// it would park the popover in a corner the first time the settings are read on an X11 session.
+fn positions_are_real() -> bool {
+    if !cfg!(target_os = "linux") {
+        return true;
+    }
+    std::env::var("GDK_BACKEND").is_ok_and(|backend| backend == "x11")
+        || std::env::var_os("WAYLAND_DISPLAY").is_none()
+}
+
 pub fn create(app: &tauri::AppHandle) -> tauri::Result<WebviewWindow> {
     let window = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("index.html".into()))
         .title("Trayci")
@@ -73,7 +84,7 @@ pub fn create(app: &tauri::AppHandle) -> tauri::Result<WebviewWindow> {
         }
         WindowEvent::Moved(position) => {
             let state = app_handle.state::<PopoverState>();
-            if !*state.dragging.lock().expect("popover dragging lock") {
+            if !*state.dragging.lock().expect("popover dragging lock") || !positions_are_real() {
                 return;
             }
             state.set_custom_position(Some((position.x, position.y)));
