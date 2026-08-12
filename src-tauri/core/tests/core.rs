@@ -5,8 +5,8 @@ use std::{collections::HashMap, sync::Arc};
 use trayci_core::{
     cli::run_cli, BuiltInProviderSettingsPatch, CacheRepository, NotificationSettings,
     ProviderDetection, ProviderDetectionStatus, ProviderError, ProviderErrorKind,
-    ProviderSettingsPatch, ProviderUsageSnapshot, QuotaNotifier, SettingsRepository,
-    Theme, TrayciSettings, TrayciSettingsPatch, UsageFetchContext, UsageFetchReason, UsageProvider,
+    ProviderSettingsPatch, ProviderUsageSnapshot, QuotaNotifier, SettingsRepository, Theme,
+    TrayciSettings, TrayciSettingsPatch, UsageFetchContext, UsageFetchReason, UsageProvider,
     UsageService, UsageSource, UsageState, UsageStatus, UsageWindow,
 };
 
