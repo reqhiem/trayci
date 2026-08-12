@@ -420,7 +420,7 @@ function Settings({
       </Group>
       <Group title="Window">
         <div className="setting-row">
-          <span>Drag the title bar to move the popup</span>
+          <span>Drag the title bar to move the popup (X11 sessions only)</span>
           <button
             className="row-button"
             type="button"

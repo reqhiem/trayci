@@ -9,4 +9,6 @@ The Mint and Ubuntu 25 (GNOME) rows were checked with the packaged Electron runt
 
 **Note:** as of v0.3.0 Trayci runs on Tauri 2. The matrix above reflects the retired Electron build and is pending re-validation against the Tauri build (see tech spec §19 for the known Tauri/Linux watch-items).
 
-**Wayland:** GTK lets no Wayland client place its own window, so on a Wayland session the popover could not anchor to the tray icon, be dragged, or reopen where it was left. Since v0.4.0 Trayci starts under XWayland when `DISPLAY` is set; `GDK_BACKEND=wayland` opts back out. Checked on Ubuntu GNOME (Wayland): the popover anchors, resizes for the detail pane, and holds its position.
+**Wayland:** GTK lets no Wayland client place its own window (`gtk_window_move` is a no-op for toplevels), so on a Wayland session the popover cannot anchor to the tray icon, be dragged, or reopen where it was left. Everything else works.
+
+XWayland is not a way out, and v0.4.0 must not force it. Measured on Ubuntu GNOME with `GDK_BACKEND=x11`: the popover maps but never takes X input focus (`xdotool getwindowfocus` keeps naming another window), and the first click unmaps it instead of reaching the webview — the settings button, the refresh button and the provider rows all appear dead. Pointer motion still arrives, so hover keeps working, which is what makes the failure look like "only the header broke".

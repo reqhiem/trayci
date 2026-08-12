@@ -44,7 +44,7 @@ sudo apt install ./trayci_*_amd64.deb
 
 Trayci requires at least one authenticated provider. Antigravity reads the signed-in `agy` CLI's `/usage` panel and falls back to Orca ADE's Google Code Assist quota path when Gemini OAuth credentials are available.
 
-On a Wayland session Trayci runs through XWayland, because GTK lets no Wayland client place its own window and the popover has to sit under the tray icon, be dragged, and reopen where it was left. Set `GDK_BACKEND=wayland` to override this.
+Dragging the popover and remembering where it was left need an X11 session: GTK lets no Wayland client place its own window. Running `GDK_BACKEND=x11 trayci` on a Wayland session is **not** a workaround — under XWayland the popover never takes input focus and the first click dismisses it instead of reaching the button.
 
 ## Development
 
