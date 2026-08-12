@@ -151,10 +151,13 @@ h1 {
 
 /* One chevron for rows, the back button and the settings groups: a rotated corner, not a glyph,
    so every arrow in the popover has the same weight and sits on the same optical centre. */
-.chevron,
 .back-button::before,
 .settings-group > summary::after {
   content: "";
+}
+.chevron,
+.back-button::before,
+.settings-group > summary::after {
   display: block;
   flex: 0 0 auto;
   width: 6px;

@@ -499,7 +499,15 @@ export default function App(): React.JSX.Element {
   // stopImmediatePropagation() before starting the drag, so a bubbling listener never runs.
   useEffect(() => {
     const start = (event: MouseEvent): void => {
-      if ((event.target as HTMLElement).closest?.("[data-tauri-drag-region]"))
+      const target = event.target as HTMLElement;
+      // Mirror what Tauri's own drag script does with a clickable element inside a drag region: it
+      // refuses to drag there. Claiming a drag anyway left the flag set for a window move we never
+      // made, which the backend would then have stored as a position the user chose.
+      if (
+        target.closest?.("button, a, input, select, textarea, label, summary")
+      )
+        return;
+      if (target.closest?.("[data-tauri-drag-region]"))
         void trayci.app.beginDrag();
     };
     window.addEventListener("mousedown", start, true);
