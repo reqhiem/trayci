@@ -506,6 +506,14 @@ export default function App(): React.JSX.Element {
     return () => window.removeEventListener("mousedown", start, true);
   }, []);
 
+  // The popover is hidden, not unloaded, so a hover survives until the next pointer move. Without
+  // this it would reopen showing the detail pane of whatever row the pointer last passed over.
+  useEffect(() => {
+    const clear = (): void => setHoveredProvider(null);
+    window.addEventListener("blur", clear);
+    return () => window.removeEventListener("blur", clear);
+  }, []);
+
   useEffect(() => {
     const escape = (event: KeyboardEvent): void => {
       if (event.key !== "Escape") return;
