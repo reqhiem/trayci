@@ -249,9 +249,9 @@ fn placement(
 mod tests {
     use super::*;
 
-    fn area(width: u32, height: u32) -> tauri::PhysicalRect<i32, u32> {
+    fn area(x: i32, y: i32, width: u32, height: u32) -> tauri::PhysicalRect<i32, u32> {
         tauri::PhysicalRect {
-            position: PhysicalPosition::new(0, 0),
+            position: PhysicalPosition::new(x, y),
             size: PhysicalSize::new(width, height),
         }
     }
@@ -265,7 +265,7 @@ mod tests {
                 size,
                 360.0,
                 None,
-                area(1920, 1080)
+                area(0, 0, 1920, 1080)
             ),
             (0, 13)
         );
@@ -275,9 +275,133 @@ mod tests {
                 size,
                 360.0,
                 None,
-                area(1920, 1080)
+                area(0, 0, 1920, 1080)
             ),
             (1560, 802)
+        );
+    }
+
+    #[test]
+    fn placement_clears_a_top_panel() {
+        // A 40px top panel: the tray icon sits inside it, above the work area, so the popover has
+        // no room above the anchor and drops below it, stopping at the panel's edge.
+        assert_eq!(
+            placement(
+                PhysicalPosition::new(960.0, 20.0),
+                PhysicalSize::new(360, 260),
+                360.0,
+                None,
+                area(0, 40, 1920, 1040)
+            ),
+            (780, 40)
+        );
+    }
+
+    #[test]
+    fn placement_respects_side_panels() {
+        let size = PhysicalSize::new(360, 260);
+        // A 60px left panel: centring the column on the icon would start at -150.
+        assert_eq!(
+            placement(
+                PhysicalPosition::new(30.0, 540.0),
+                size,
+                360.0,
+                None,
+                area(60, 0, 1860, 1080)
+            ),
+            (60, 272)
+        );
+        // A 60px right panel: the popover ends flush with the work area at 1500 + 360 = 1860.
+        assert_eq!(
+            placement(
+                PhysicalPosition::new(1890.0, 540.0),
+                size,
+                360.0,
+                None,
+                area(0, 0, 1860, 1080)
+            ),
+            (1500, 272)
+        );
+    }
+
+    #[test]
+    fn placement_handles_negative_monitor_origins() {
+        let size = PhysicalSize::new(360, 260);
+        // A monitor left of the primary spans x -1920..0.
+        assert_eq!(
+            placement(
+                PhysicalPosition::new(-1915.0, 540.0),
+                size,
+                360.0,
+                None,
+                area(-1920, 0, 1920, 1080)
+            ),
+            (-1920, 272)
+        );
+        assert_eq!(
+            placement(
+                PhysicalPosition::new(-10.0, 1070.0),
+                size,
+                360.0,
+                None,
+                area(-1920, 0, 1920, 1080)
+            ),
+            (-360, 802),
+            "the right edge of a monitor at a negative origin is still its own edge"
+        );
+        // A monitor above the primary spans y -1080..0, with the tray icon at its top.
+        assert_eq!(
+            placement(
+                PhysicalPosition::new(960.0, -1070.0),
+                size,
+                360.0,
+                None,
+                area(0, -1080, 1920, 1080)
+            ),
+            (780, -1062)
+        );
+    }
+
+    #[test]
+    fn placement_uses_the_work_area_of_the_anchored_monitor() {
+        let anchor = PhysicalPosition::new(3180.0, 700.0);
+        let size = PhysicalSize::new(360, 260);
+        // A 1280x720 secondary right of the primary, with a 30px top panel of its own.
+        assert_eq!(
+            placement(anchor, size, 360.0, None, area(1920, 30, 1280, 690)),
+            (2840, 432)
+        );
+        // The same anchor against the primary's work area lands nowhere near it, which is why the
+        // caller has to resolve the monitor before asking for a placement.
+        assert_eq!(
+            placement(anchor, size, 360.0, None, area(0, 0, 1920, 1040)).0,
+            1560
+        );
+    }
+
+    #[test]
+    fn placement_survives_a_work_area_smaller_than_the_popover() {
+        let size = PhysicalSize::new(360, 260);
+        assert_eq!(
+            placement(
+                PhysicalPosition::new(100.0, 140.0),
+                size,
+                360.0,
+                None,
+                area(0, 0, 200, 150)
+            ),
+            (0, 0)
+        );
+        // Clamping is to the work area's origin, not to zero.
+        assert_eq!(
+            placement(
+                PhysicalPosition::new(150.0, 90.0),
+                size,
+                360.0,
+                None,
+                area(100, 50, 200, 150)
+            ),
+            (100, 50)
         );
     }
 
@@ -289,17 +413,25 @@ mod tests {
             PhysicalSize::new(360, 260),
             360.0,
             None,
-            area(1920, 1080),
+            area(0, 0, 1920, 1080),
         );
         let opened = placement(
             anchor,
             PhysicalSize::new(680, 260),
             360.0,
             None,
-            area(1920, 1080),
+            area(0, 0, 1920, 1080),
+        );
+        let widest = placement(
+            anchor,
+            PhysicalSize::new(1040, 260),
+            360.0,
+            None,
+            area(0, 0, 1920, 1080),
         );
         assert_eq!(closed, (780, 792));
         assert_eq!(opened.0, closed.0, "the detail pane grows to the right");
+        assert_eq!(widest.0, closed.0, "and keeps growing to the right");
     }
 
     #[test]
@@ -310,9 +442,36 @@ mod tests {
                 PhysicalSize::new(680, 260),
                 360.0,
                 Some(PhysicalPosition::new(1800, 900)),
-                area(1920, 1080)
+                area(0, 0, 1920, 1080)
             ),
             (1240, 820)
+        );
+    }
+
+    #[test]
+    fn placement_keeps_a_dragged_position_across_resizes() {
+        let anchor = PhysicalPosition::new(960.0, 1060.0);
+        let dragged = Some(PhysicalPosition::new(1200, 400));
+        let work = area(0, 0, 1920, 1080);
+        assert_eq!(
+            placement(anchor, PhysicalSize::new(360, 260), 360.0, dragged, work),
+            (1200, 400)
+        );
+        assert_eq!(
+            placement(anchor, PhysicalSize::new(680, 260), 360.0, dragged, work),
+            (1200, 400),
+            "opening the detail pane leaves the dragged corner alone"
+        );
+        // Until growing rightwards would run off the work area, which slides it back on.
+        assert_eq!(
+            placement(
+                anchor,
+                PhysicalSize::new(680, 260),
+                360.0,
+                Some(PhysicalPosition::new(1500, 400)),
+                work
+            ),
+            (1240, 400)
         );
     }
 }
