@@ -221,6 +221,10 @@ pub struct TrayciSettings {
     pub percentage_display: PercentageDisplay,
     pub notifications: NotificationSettings,
     pub providers: BuiltInProviderSettings,
+    /// Provider ids in the order the user arranged them. Ids missing from it keep their usage
+    /// ordering after the ones listed, so a provider added in a later release still appears.
+    #[serde(default)]
+    pub provider_order: Vec<String>,
     #[serde(default)]
     pub window_position: Option<(i32, i32)>,
     #[serde(default)]
@@ -240,6 +244,7 @@ impl Default for TrayciSettings {
             percentage_display: PercentageDisplay::Used,
             notifications: NotificationSettings::default(),
             providers: BuiltInProviderSettings::default(),
+            provider_order: Vec::new(),
             window_position: None,
             theme: Theme::default(),
             font_scale: default_font_scale(),
@@ -290,6 +295,7 @@ pub struct TrayciSettingsPatch {
     pub percentage_display: Option<PercentageDisplay>,
     pub notifications: Option<NotificationSettingsPatch>,
     pub providers: Option<BuiltInProviderSettingsPatch>,
+    pub provider_order: Option<Vec<String>>,
     #[serde(default, deserialize_with = "deserialize_optional_option")]
     pub window_position: Option<Option<(i32, i32)>>,
     pub theme: Option<Theme>,

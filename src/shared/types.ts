@@ -71,6 +71,11 @@ export type TrayciSettings = {
     BuiltInProviderId,
     { enabled: boolean; executablePath: string | null }
   >;
+  /**
+   * Provider ids in the order the user arranged them. Ids missing from it keep their usage
+   * ordering after the ones listed, so a provider added in a later release still appears.
+   */
+  providerOrder: ProviderId[];
   windowPosition: [number, number] | null;
   theme: "dark" | "light" | "system";
   /** Webview zoom, 0.8 to 1.6. */
@@ -112,6 +117,7 @@ export const DEFAULT_SETTINGS: TrayciSettings = {
     codex: { enabled: true, executablePath: null },
     antigravity: { enabled: true, executablePath: null },
   },
+  providerOrder: [],
   windowPosition: null,
   theme: "dark",
   fontScale: 1,
@@ -132,6 +138,8 @@ export type TrayciApi = {
     drag(): Promise<void>;
     endDrag(): Promise<void>;
     hidePopover(): Promise<void>;
+    /** False on Wayland, where GTK discards a window move and a typed position would do nothing. */
+    positionsAreReal(): Promise<boolean>;
     resizePopover(width: number, height: number): Promise<void>;
     quit(): Promise<void>;
   };

@@ -60,7 +60,7 @@ impl PopoverState {
 /// GTK reports a Wayland toplevel as sitting at its surface origin and cannot move it back, so a
 /// move reported there is neither the position the user sees nor one we could ever restore. Storing
 /// it would park the popover in a corner the first time the settings are read on an X11 session.
-fn positions_are_real() -> bool {
+pub fn positions_are_real() -> bool {
     if !cfg!(target_os = "linux") {
         return true;
     }
@@ -192,6 +192,19 @@ pub fn save_position(app: &tauri::AppHandle) {
             *app_state.settings.lock().expect("settings lock") = updated;
         }
     });
+}
+
+/// Places the popover at a typed position, the manual counterpart of a drag (issue #39).
+///
+/// The stored value is what was typed; `placement` clamps it to the work area on every use, the
+/// same way it does for a dragged one.
+pub fn place(app: &tauri::AppHandle, position: (i32, i32)) -> tauri::Result<()> {
+    let state = app.state::<PopoverState>();
+    state.set_custom_position(Some(position));
+    match app.get_webview_window(LABEL) {
+        Some(window) => position_window(&window, &state),
+        None => Ok(()),
+    }
 }
 
 /// Drops a dragged position and snaps the popover back to the tray.

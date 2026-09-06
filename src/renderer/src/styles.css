@@ -528,6 +528,34 @@ h1 {
   border-top: 1px solid var(--line);
   font-size: 11px;
 }
+/* The reorder buttons sit first, so the name takes the space between them and the switch. */
+.provider-setting > label {
+  flex: 1;
+}
+.position-inputs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.position-inputs label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.position-inputs input {
+  width: 62px;
+  padding: 3px 5px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: none;
+  color: inherit;
+  font-size: 10px;
+}
+.position-inputs input:disabled {
+  opacity: 0.55;
+}
 .choice-group {
   display: flex;
   overflow: hidden;

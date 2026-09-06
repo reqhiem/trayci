@@ -23,7 +23,7 @@ pub async fn update_settings(
     state: State<'_, AppState>,
     patch: TrayciSettingsPatch,
 ) -> Result<TrayciSettings, String> {
-    let cleared_position = patch.window_position == Some(None);
+    let position = patch.window_position;
     let previous = state.settings.lock().expect("settings lock").clone();
     let settings = state
         .repository
@@ -33,9 +33,13 @@ pub async fn update_settings(
         .await
         .map_err(|error| error.to_string())?;
     *state.settings.lock().expect("settings lock") = settings.clone();
-    if cleared_position {
-        popover::reanchor(&app).map_err(|error| error.to_string())?;
+    match position {
+        // Typed coordinates only take effect on the next launch unless the window is moved now.
+        Some(Some(position)) => popover::place(&app, position),
+        Some(None) => popover::reanchor(&app),
+        None => Ok(()),
     }
+    .map_err(|error| error.to_string())?;
     popover::set_scale(&app, settings.font_scale).map_err(|error| error.to_string())?;
     autostart::set_enabled(settings.start_on_login)
         .await
@@ -63,6 +67,13 @@ pub fn drag_popover(app: AppHandle) {
 #[tauri::command]
 pub fn end_popover_drag(app: AppHandle) {
     popover::end_drag(&app);
+}
+
+/// Whether a position the user sets survives: GTK discards a window move for a Wayland toplevel,
+/// so there the coordinates would be written to settings and never applied.
+#[tauri::command]
+pub fn positions_are_real() -> bool {
+    popover::positions_are_real()
 }
 
 #[tauri::command]

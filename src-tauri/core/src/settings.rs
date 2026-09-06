@@ -102,6 +102,9 @@ pub fn merge(
             merge_provider(&mut settings.providers.antigravity, patch)?;
         }
     }
+    if let Some(value) = patch.provider_order {
+        settings.provider_order = value;
+    }
     if let Some(value) = patch.window_position {
         settings.window_position = value;
     }

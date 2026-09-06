@@ -48,6 +48,7 @@ fn schema_v1_settings_match_the_typescript_contract() {
     assert_eq!(json["displayMode"], "detailed");
     assert_eq!(json["percentageDisplay"], "used");
     assert!(json["providers"]["antigravity"]["executablePath"].is_null());
+    assert_eq!(json["providerOrder"], serde_json::json!([]));
     assert!(serde_json::from_value::<TrayciSettings>(json).is_ok());
 }
 
@@ -118,6 +119,64 @@ async fn settings_written_before_theme_and_font_scale_keep_their_values() {
         })
         .await
         .is_err());
+}
+
+#[tokio::test]
+async fn a_config_without_a_provider_order_loads_and_can_be_given_one() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("config.json");
+    // Exactly what v0.4.1 wrote: no providerOrder, and a position already dragged to.
+    let mut before = serde_json::to_value(TrayciSettings::default()).unwrap();
+    before["windowPosition"] = serde_json::json!([2496, 602]);
+    before.as_object_mut().unwrap().remove("providerOrder");
+    tokio::fs::write(&path, serde_json::to_vec(&before).unwrap())
+        .await
+        .unwrap();
+
+    let mut repository = SettingsRepository::new(&path);
+    let settings = repository.load().await;
+    assert!(
+        settings.provider_order.is_empty(),
+        "no order means no preference, which leaves the usage ordering alone"
+    );
+    assert_eq!(settings.window_position, Some((2496, 602)));
+
+    let settings = repository
+        .update(TrayciSettingsPatch {
+            provider_order: Some(vec!["codex".into(), "claude".into()]),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(settings.provider_order, ["codex", "claude"]);
+    assert_eq!(
+        settings.window_position,
+        Some((2496, 602)),
+        "a patch that says nothing about the position must not clear it"
+    );
+
+    // The two cases `update_settings` tells apart: set the position, and clear it.
+    let settings = repository
+        .update(TrayciSettingsPatch {
+            window_position: Some(Some((10, 20))),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(settings.window_position, Some((10, 20)));
+    let settings = repository
+        .update(TrayciSettingsPatch {
+            window_position: Some(None),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(settings.window_position, None);
+    assert_eq!(
+        settings.provider_order,
+        ["codex", "claude"],
+        "clearing the position must not disturb the order"
+    );
 }
 
 #[tokio::test]
