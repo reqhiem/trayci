@@ -348,11 +348,15 @@ function PositionRow({
     x: value ? String(value[0]) : "",
     y: value ? String(value[1]) : "",
   };
+  // The draft is only dropped once it has become a position. Clearing it on every blur threw away
+  // whichever field was filled first, so with no position saved yet, tabbing from X to Y emptied X
+  // and neither could ever be set.
   const commit = (): void => {
-    setDraft(null);
     const [x, y] = [Number(shown.x), Number(shown.y)];
     if (shown.x === "" || shown.y === "") return;
-    if (Number.isInteger(x) && Number.isInteger(y)) onChange([x, y]);
+    if (!Number.isInteger(x) || !Number.isInteger(y)) return;
+    setDraft(null);
+    onChange([x, y]);
   };
   return (
     <div className="setting-row">
