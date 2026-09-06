@@ -76,6 +76,13 @@ pub fn positions_are_real() -> bool {
     popover::positions_are_real()
 }
 
+/// TEMPORARY (issue #38). The webview's only way to report what it saw; the WebKit console is not
+/// forwarded to the dev process and `setTitle` is not in the capability set.
+#[tauri::command]
+pub fn debug_probe(text: String) {
+    eprintln!("PROBE js {text}");
+}
+
 #[tauri::command]
 pub fn hide_popover(app: AppHandle) -> Result<(), String> {
     popover::save_position(&app);

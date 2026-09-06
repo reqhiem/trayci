@@ -64,6 +64,7 @@ pub fn run() {
             commands::drag_popover,
             commands::end_popover_drag,
             commands::positions_are_real,
+            commands::debug_probe,
             commands::hide_popover,
             commands::resize_popover,
             commands::quit_app,

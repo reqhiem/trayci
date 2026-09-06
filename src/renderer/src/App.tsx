@@ -661,6 +661,52 @@ export default function App(): React.JSX.Element {
       .catch(() => setError("Trayci could not load its state."));
   }, [view]);
 
+  // TEMPORARY (issue #38). Reports what the document actually sees, and when, so the first key
+  // after a show can be found or shown to be missing rather than inferred from the window staying
+  // open. Capture phase, so nothing downstream can hide an event that did arrive.
+  useEffect(() => {
+    const report = (what: string): void =>
+      void import("@tauri-apps/api/core").then(({ invoke }) =>
+        invoke("debug_probe", {
+          text:
+            what +
+            " t=" +
+            Math.round(performance.now()) +
+            " hasFocus=" +
+            document.hasFocus() +
+            " visibility=" +
+            document.visibilityState +
+            " active=" +
+            (document.activeElement?.tagName ?? "none"),
+        }),
+      );
+    const key = (event: KeyboardEvent): void =>
+      report(
+        "keydown key=" +
+          event.key +
+          " code=" +
+          event.code +
+          " composing=" +
+          event.isComposing +
+          " repeat=" +
+          event.repeat,
+      );
+    const focus = (): void => report("focus");
+    const blur = (): void => report("blur");
+    const visibility = (): void => report("visibilitychange");
+    window.addEventListener("keydown", key, true);
+    window.addEventListener("focus", focus);
+    window.addEventListener("blur", blur);
+    document.addEventListener("visibilitychange", visibility);
+    report("mounted");
+    return () => {
+      window.removeEventListener("keydown", key, true);
+      window.removeEventListener("focus", focus);
+      window.removeEventListener("blur", blur);
+      document.removeEventListener("visibilitychange", visibility);
+    };
+  }, []);
+
   useEffect(() => {
     const escape = (event: KeyboardEvent): void => {
       if (event.key !== "Escape") return;

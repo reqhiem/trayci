@@ -104,8 +104,42 @@ pub fn create(app: &tauri::AppHandle) -> tauri::Result<WebviewWindow> {
         }
         _ => {}
     });
+    probe_keys(&window);
     Ok(window)
 }
+
+/// TEMPORARY (issue #38). Logs every key GTK delivers to the popover's toplevel, above WebKit.
+///
+/// The point is one number: if the *first* key after a show arrives here but never reaches the
+/// document, the event survives X and GTK and is lost in the WebKit hop, and closing on Escape can
+/// simply be handled here instead of in the webview.
+#[cfg(target_os = "linux")]
+fn probe_keys(window: &WebviewWindow) {
+    let _ = window.run_on_main_thread({
+        let window = window.clone();
+        move || {
+            use gtk::prelude::*;
+            let Ok(gtk) = window.gtk_window() else {
+                return;
+            };
+            gtk.connect_key_press_event(|gtk, event| {
+                eprintln!(
+                    "PROBE gtk key={:?} focus_widget={:?} is_active={} toplevel_focus={} visible={}",
+                    event.keyval().name().map(|name| name.to_string()),
+                    gtk.focused_widget().map(|widget| widget.type_().to_string()),
+                    gtk.is_active(),
+                    gtk.has_toplevel_focus(),
+                    gtk.is_visible(),
+                );
+                // Proceed, or the probe itself would eat the key it is measuring.
+                gtk::glib::Propagation::Proceed
+            });
+        }
+    });
+}
+
+#[cfg(not(target_os = "linux"))]
+fn probe_keys(_window: &WebviewWindow) {}
 
 /// Records where the cursor and the window were when the header was pressed.
 ///
