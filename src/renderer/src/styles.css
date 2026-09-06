@@ -96,8 +96,13 @@ main {
 main.has-detail {
   grid-template-columns: minmax(340px, 360px) 1fr;
 }
+/* Sized by its own content, not by the grid row. The row is as tall as the detail pane, and a
+   stretched master reports that height through `scrollHeight`, so the window grew to fit a pane
+   that was supposed to scroll inside it — and `max-height: 100vh` on the detail could never cap
+   anything, because the viewport it measures against was the height the detail had just set. */
 .master {
   min-width: 0;
+  align-self: start;
   border-right: 1px solid var(--line);
 }
 .topbar {
