@@ -1,5 +1,15 @@
 import type { ProviderUsageSnapshot, UsageWindow } from "./types";
 
+/**
+ * Where a provider sits in the order the user arranged, for sorting. Ids the order does not
+ * mention rank equal and last, so they keep whatever order the caller sorts by next — and an
+ * empty order ranks everything equal, which leaves the usage ordering untouched.
+ */
+export function providerRank(order: readonly string[], id: string): number {
+  const index = order.indexOf(id);
+  return index < 0 ? order.length : index;
+}
+
 export function tightestWindow(
   snapshot: ProviderUsageSnapshot,
 ): UsageWindow | null {

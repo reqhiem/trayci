@@ -35,6 +35,7 @@ export const trayci: TrayciApi = {
     beginDrag: () => invoke<void>("begin_popover_drag"),
     drag: () => invoke<void>("drag_popover"),
     endDrag: () => invoke<void>("end_popover_drag"),
+    positionsAreReal: () => invoke<boolean>("positions_are_real"),
     hidePopover: () => invoke<void>("hide_popover"),
     resizePopover: (width, height) =>
       invoke<void>("resize_popover", { width, height }),

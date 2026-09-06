@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatAge,
   formatResetCountdown,
+  providerRank,
   statusSummary,
   tightestWindow,
 } from "../../src/shared/presentation";
@@ -69,5 +70,49 @@ describe("presentation helpers", () => {
       stale: false,
     });
     expect(statusSummary({ ...snapshot, windows: [] }, 0)).toBeNull();
+  });
+});
+
+describe("providerRank", () => {
+  // The sort the provider list runs: the configured order first, usage breaking the rest.
+  const sorted = (order: string[], ids: [string, number][]): string[] =>
+    ids
+      .sort(
+        ([left, usedLeft], [right, usedRight]) =>
+          providerRank(order, left) - providerRank(order, right) ||
+          usedRight - usedLeft,
+      )
+      .map(([id]) => id);
+
+  it("leaves the usage ordering alone when no order is set", () => {
+    const usage: [string, number][] = [
+      ["claude", 10],
+      ["codex", 90],
+      ["antigravity", 50],
+    ];
+    expect(sorted([], usage)).toEqual(["codex", "antigravity", "claude"]);
+  });
+
+  it("puts the configured order ahead of usage", () => {
+    const usage: [string, number][] = [
+      ["claude", 10],
+      ["codex", 90],
+      ["antigravity", 50],
+    ];
+    expect(sorted(["claude", "antigravity", "codex"], usage)).toEqual([
+      "claude",
+      "antigravity",
+      "codex",
+    ]);
+  });
+
+  it("appends providers the order does not mention, still by usage", () => {
+    expect(providerRank(["claude"], "plugin:new")).toBe(1);
+    const usage: [string, number][] = [
+      ["claude", 10],
+      ["codex", 5],
+      ["plugin:new", 80],
+    ];
+    expect(sorted(["codex"], usage)).toEqual(["codex", "plugin:new", "claude"]);
   });
 });

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type {
+  BuiltInProviderId,
   ProviderId,
   ProviderUsageSnapshot,
   TrayciSettings,
@@ -11,6 +12,7 @@ import { DEFAULT_SETTINGS, FONT_SCALES } from "../../shared/types";
 import {
   formatAge,
   formatResetCountdown,
+  providerRank,
   statusSummary,
   tightestWindow,
 } from "../../shared/presentation";
@@ -319,6 +321,66 @@ function Group({
   );
 }
 
+const PROVIDER_LABELS: readonly (readonly [BuiltInProviderId, string])[] = [
+  ["claude", "Claude Code"],
+  ["codex", "Codex"],
+  ["antigravity", "Antigravity"],
+];
+
+/**
+ * The X and Y the popover is placed at, as an alternative to dragging it (issue #39).
+ *
+ * Both coordinates travel together: committing one alone would send the popover to a corner it
+ * was never asked to go to. What is typed is kept until the field is left, so a half-typed number
+ * is not a position.
+ */
+function PositionRow({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: [number, number] | null;
+  disabled: boolean;
+  onChange(position: [number, number]): void;
+}): React.JSX.Element {
+  const [draft, setDraft] = useState<{ x: string; y: string } | null>(null);
+  const shown = draft ?? {
+    x: value ? String(value[0]) : "",
+    y: value ? String(value[1]) : "",
+  };
+  const commit = (): void => {
+    setDraft(null);
+    const [x, y] = [Number(shown.x), Number(shown.y)];
+    if (shown.x === "" || shown.y === "") return;
+    if (Number.isInteger(x) && Number.isInteger(y)) onChange([x, y]);
+  };
+  return (
+    <div className="setting-row">
+      <span>{disabled ? "Position (Wayland ignores it)" : "Position"}</span>
+      <span className="position-inputs">
+        {(["x", "y"] as const).map((axis) => (
+          <label key={axis}>
+            {axis.toUpperCase()}
+            <input
+              type="number"
+              step={1}
+              disabled={disabled}
+              value={shown[axis]}
+              onChange={(event) =>
+                setDraft({ ...shown, [axis]: event.target.value })
+              }
+              onBlur={commit}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.currentTarget.blur();
+              }}
+            />
+          </label>
+        ))}
+      </span>
+    </div>
+  );
+}
+
 function Settings({
   settings,
   update,
@@ -326,6 +388,30 @@ function Settings({
   settings: TrayciSettings;
   update(patch: TrayciSettingsPatch): void;
 }): React.JSX.Element {
+  const [canPosition, setCanPosition] = useState(false);
+  useEffect(() => {
+    void trayci.app
+      .positionsAreReal()
+      .then(setCanPosition)
+      .catch(() => setCanPosition(false));
+  }, []);
+
+  const ordered = [...PROVIDER_LABELS].sort(
+    ([left], [right]) =>
+      providerRank(settings.providerOrder, left) -
+      providerRank(settings.providerOrder, right),
+  );
+  // The whole list is written, not just the pair that swapped: a partial order would leave the
+  // providers it omits to the usage sort, which is what the user is overriding.
+  const move = (index: number, delta: number): void => {
+    const ids = ordered.map(([provider]) => provider);
+    const [moved, displaced] = [ids[index], ids[index + delta]];
+    if (!moved || !displaced) return;
+    ids[index] = displaced;
+    ids[index + delta] = moved;
+    update({ providerOrder: ids });
+  };
+
   return (
     <div className="settings-view">
       <Group title="General" open>
@@ -400,23 +486,44 @@ function Settings({
         />
       </Group>
       <Group title="Providers">
-        <Switch
-          checked={settings.providers.claude.enabled}
-          onChange={(enabled) => update({ providers: { claude: { enabled } } })}
-          label="Claude Code"
-        />
-        <Switch
-          checked={settings.providers.codex.enabled}
-          onChange={(enabled) => update({ providers: { codex: { enabled } } })}
-          label="Codex"
-        />
-        <Switch
-          checked={settings.providers.antigravity.enabled}
-          onChange={(enabled) =>
-            update({ providers: { antigravity: { enabled } } })
-          }
-          label="Antigravity"
-        />
+        {ordered.map(([provider, label], index) => (
+          <div className="setting-row provider-setting" key={provider}>
+            <span
+              className="choice-group"
+              role="group"
+              aria-label={`Reorder ${label}`}
+            >
+              <button
+                type="button"
+                aria-label={`Move ${label} up`}
+                disabled={index === 0}
+                onClick={() => move(index, -1)}
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                aria-label={`Move ${label} down`}
+                disabled={index === ordered.length - 1}
+                onClick={() => move(index, 1)}
+              >
+                ↓
+              </button>
+            </span>
+            <label htmlFor={`provider-${provider}`}>{label}</label>
+            <input
+              id={`provider-${provider}`}
+              type="checkbox"
+              role="switch"
+              checked={settings.providers[provider].enabled}
+              onChange={(event) =>
+                update({
+                  providers: { [provider]: { enabled: event.target.checked } },
+                })
+              }
+            />
+          </div>
+        ))}
       </Group>
       <Group title="Window">
         <div className="setting-row">
@@ -429,6 +536,11 @@ function Settings({
             Reset position
           </button>
         </div>
+        <PositionRow
+          value={settings.windowPosition}
+          disabled={!canPosition}
+          onChange={(windowPosition) => update({ windowPosition })}
+        />
       </Group>
       <button
         className="quit-button"
@@ -539,6 +651,16 @@ export default function App(): React.JSX.Element {
     return () => window.removeEventListener("blur", clear);
   }, []);
 
+  // A drag writes windowPosition straight to settings, and the webview is only ever hidden, so
+  // without this the Window group would keep showing the position loaded when it was created.
+  useEffect(() => {
+    if (view !== "settings") return;
+    void trayci.settings
+      .get()
+      .then(setSettings)
+      .catch(() => setError("Trayci could not load its state."));
+  }, [view]);
+
   useEffect(() => {
     const escape = (event: KeyboardEvent): void => {
       if (event.key !== "Escape") return;
@@ -549,14 +671,21 @@ export default function App(): React.JSX.Element {
     return () => window.removeEventListener("keydown", escape);
   }, [view, pinnedProvider]);
 
+  // The order set in Settings wins. Providers it does not mention rank equal, so they keep the
+  // usage ordering behind the ones it does — and an empty order leaves usage in charge of all.
+  const order = settings.providerOrder;
   const providers = useMemo(
     () =>
       Object.values(state.providers)
         .filter((snapshot): snapshot is ProviderUsageSnapshot =>
           Boolean(snapshot),
         )
-        .sort((a, b) => maximum(b) - maximum(a)),
-    [state.providers],
+        .sort(
+          (a, b) =>
+            providerRank(order, a.provider) - providerRank(order, b.provider) ||
+            maximum(b) - maximum(a),
+        ),
+    [state.providers, order],
   );
   const revealed = pinnedProvider ?? hoveredProvider;
   const selected =
