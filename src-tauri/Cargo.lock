@@ -4397,7 +4397,7 @@ dependencies = [
 
 [[package]]
 name = "trayci"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "gdkx11",
  "gtk",
@@ -4412,7 +4412,7 @@ dependencies = [
 
 [[package]]
 name = "trayci-core"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "async-trait",
  "chrono",
