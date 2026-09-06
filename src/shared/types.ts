@@ -129,6 +129,8 @@ export type TrayciApi = {
   };
   app: {
     beginDrag(): Promise<void>;
+    drag(): Promise<void>;
+    endDrag(): Promise<void>;
     hidePopover(): Promise<void>;
     resizePopover(width: number, height: number): Promise<void>;
     quit(): Promise<void>;

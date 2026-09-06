@@ -61,6 +61,8 @@ pub fn run() {
             commands::get_settings,
             commands::update_settings,
             commands::begin_popover_drag,
+            commands::drag_popover,
+            commands::end_popover_drag,
             commands::hide_popover,
             commands::resize_popover,
             commands::quit_app,

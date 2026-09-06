@@ -25,3 +25,9 @@ tauri-plugin-single-instance = "2"
 tauri-plugin-global-shortcut = "2"
 tokio = { version = "1", features = ["fs", "io-util", "sync"] }
 trayci-core = { path = "core" }
+
+# Already in the tree through tauri; named here only to reach `present_with_time` and
+# `set_user_time`, which `WebviewWindow::set_focus` cannot supply a timestamp for (issue #38).
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"
+gdkx11 = "0.18"
