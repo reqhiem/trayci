@@ -1,6 +1,6 @@
 use crate::model::{ProviderError, ProviderErrorKind};
 use chrono::DateTime;
-use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, PtySize};
+use portable_pty::{native_pty_system, Child, CommandBuilder, PtySize};
 use regex::Regex;
 use std::{
     collections::{HashMap, HashSet},
@@ -16,7 +16,9 @@ use std::{
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
-static CHILDREN: LazyLock<Mutex<HashMap<u64, Box<dyn ChildKiller + Send + Sync>>>> =
+/// The children themselves, not just killers: a killed process stays in the process table as a
+/// zombie until someone waits on it, and only the `Child` can do that.
+static CHILDREN: LazyLock<Mutex<HashMap<u64, Box<dyn Child + Send + Sync>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 static NEXT_CHILD: AtomicU64 = AtomicU64::new(1);
 
@@ -97,9 +99,25 @@ fn user_id() -> String {
 }
 
 pub fn abort_all_children() {
-    for (_, mut child) in CHILDREN.lock().expect("child registry").drain() {
-        let _ = child.kill();
+    // Drained before any of them is waited on: `reap` blocks, and holding the registry through a
+    // wait would stall every probe still trying to register.
+    let children = CHILDREN
+        .lock()
+        .expect("child registry")
+        .drain()
+        .map(|(_, child)| child)
+        .collect::<Vec<_>>();
+    for child in children {
+        reap(child);
     }
+}
+
+/// Kills a child and collects it. In that order: the CLIs are interactive and do not exit on their
+/// own, so waiting on a live one never returns. A signalled child cannot ignore SIGKILL, so the
+/// wait that follows is the reap, not a second chance to hang.
+fn reap(mut child: Box<dyn Child + Send + Sync>) {
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 pub fn active_child_count() -> usize {
@@ -152,9 +170,11 @@ pub async fn run_pty(options: PtyOptions<'_>) -> Result<String, ProviderError> {
             ProviderError::new(ProviderErrorKind::Unknown, format!("CLI start: {error}"))
         })?;
         drop(pair.slave);
-        let killer = child.clone_killer();
+        // Handed straight to the registry, so the `?`s below cannot drop it on the floor: whatever
+        // this closure returns, and whether or not it is still running when the caller gives up,
+        // the child is reachable to be killed and reaped.
         let id = NEXT_CHILD.fetch_add(1, Ordering::Relaxed);
-        CHILDREN.lock().expect("child registry").insert(id, killer);
+        CHILDREN.lock().expect("child registry").insert(id, child);
         let _ = started_tx.send(id);
         let mut reader = pair.master.try_clone_reader().map_err(|error| {
             ProviderError::new(ProviderErrorKind::Unknown, format!("PTY reader: {error}"))
@@ -199,10 +219,9 @@ pub async fn run_pty(options: PtyOptions<'_>) -> Result<String, ProviderError> {
         _ = options.cancellation.cancelled() => Err(ProviderError::new(ProviderErrorKind::Aborted, "Cancelled")),
         _ = tokio::time::sleep(options.timeout) => Err(ProviderError::new(ProviderErrorKind::Timeout, "CLI probe timed out")),
     };
-    if let Some(child) = CHILDREN.lock().expect("child registry").get_mut(&id) {
-        let _ = child.kill();
+    if let Some(child) = CHILDREN.lock().expect("child registry").remove(&id) {
+        reap(child);
     }
-    CHILDREN.lock().expect("child registry").remove(&id);
     outcome
 }
 
