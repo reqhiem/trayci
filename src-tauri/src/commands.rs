@@ -52,7 +52,17 @@ pub async fn update_settings(
 /// The webview reports the start of a header drag; only then is a window move the user's.
 #[tauri::command]
 pub fn begin_popover_drag(app: AppHandle) {
-    app.state::<popover::PopoverState>().set_dragging(true);
+    popover::begin_drag(&app);
+}
+
+#[tauri::command]
+pub fn drag_popover(app: AppHandle) {
+    popover::drag(&app);
+}
+
+#[tauri::command]
+pub fn end_popover_drag(app: AppHandle) {
+    popover::end_drag(&app);
 }
 
 #[tauri::command]

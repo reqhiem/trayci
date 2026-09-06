@@ -494,10 +494,10 @@ export default function App(): React.JSX.Element {
     return () => system.removeEventListener("change", apply);
   }, [settings.theme]);
 
-  // Tauri moves the window itself; the backend only needs to know the move was ours to keep.
-  // Capture phase is required: Tauri's own mousedown listener on `document` calls
+  // Header drag. Capture phase is required: Tauri's own mousedown listener on `document` calls
   // stopImmediatePropagation() before starting the drag, so a bubbling listener never runs.
   useEffect(() => {
+    let dragging = false;
     const start = (event: MouseEvent): void => {
       const target = event.target as HTMLElement;
       // Mirror what Tauri's own drag script does with a clickable element inside a drag region: it
@@ -507,11 +507,28 @@ export default function App(): React.JSX.Element {
         target.closest?.("button, a, input, select, textarea, label, summary")
       )
         return;
-      if (target.closest?.("[data-tauri-drag-region]"))
-        void trayci.app.beginDrag();
+      if (!target.closest?.("[data-tauri-drag-region]")) return;
+      dragging = true;
+      void trayci.app.beginDrag();
+    };
+    // On GTK the window manager ignores the move Tauri asks for, so the backend follows the cursor
+    // itself and only needs to be told the pointer moved.
+    const move = (): void => {
+      if (dragging) void trayci.app.drag();
+    };
+    const stop = (): void => {
+      if (!dragging) return;
+      dragging = false;
+      void trayci.app.endDrag();
     };
     window.addEventListener("mousedown", start, true);
-    return () => window.removeEventListener("mousedown", start, true);
+    window.addEventListener("mousemove", move, true);
+    window.addEventListener("mouseup", stop, true);
+    return () => {
+      window.removeEventListener("mousedown", start, true);
+      window.removeEventListener("mousemove", move, true);
+      window.removeEventListener("mouseup", stop, true);
+    };
   }, []);
 
   // The popover is hidden, not unloaded, so a hover survives until the next pointer move. Without
