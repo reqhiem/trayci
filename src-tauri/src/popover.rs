@@ -316,8 +316,9 @@ fn position_window(window: &WebviewWindow, state: &PopoverState) -> tauri::Resul
         .lock()
         .expect("popover anchor lock")
         .unwrap_or(window.cursor_position()?);
+    let (x, y) = work_area_point(anchor, custom);
     let monitor = window
-        .monitor_from_point(anchor.x, anchor.y)?
+        .monitor_from_point(x, y)?
         .or(window.current_monitor()?)
         .or(window.primary_monitor()?);
     let Some(monitor) = monitor else {
@@ -334,6 +335,21 @@ fn position_window(window: &WebviewWindow, state: &PopoverState) -> tauri::Resul
         *monitor.work_area(),
     );
     window.set_position(PhysicalPosition::new(x, y))
+}
+
+/// The point whose monitor decides which work area the popover is clamped to.
+///
+/// It has to be where the popover is going, not where the pointer is. Resolving the monitor from
+/// the anchor clamps a position saved on one screen to the work area of another: opening from the
+/// tray menu, where the pointer is always on the panel's monitor, dragged the popover off the
+/// screen it had been left on (issue #42).
+fn work_area_point(
+    anchor: PhysicalPosition<f64>,
+    custom: Option<PhysicalPosition<i32>>,
+) -> (f64, f64) {
+    custom.map_or((anchor.x, anchor.y), |custom| {
+        (f64::from(custom.x), f64::from(custom.y))
+    })
 }
 
 fn placement(
@@ -380,6 +396,18 @@ mod tests {
             position: PhysicalPosition::new(x, y),
             size: PhysicalSize::new(width, height),
         }
+    }
+
+    #[test]
+    fn the_work_area_follows_the_saved_position_not_the_pointer() {
+        let anchor = PhysicalPosition::new(1900.0, 1040.0);
+        assert_eq!(work_area_point(anchor, None), (1900.0, 1040.0));
+        assert_eq!(
+            work_area_point(anchor, Some(PhysicalPosition::new(2496, 602))),
+            (2496.0, 602.0),
+            "a popover left on the second monitor is placed against that monitor's work area, \
+             however far the tray icon is from it"
+        );
     }
 
     #[test]
