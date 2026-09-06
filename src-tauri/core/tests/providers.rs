@@ -152,6 +152,11 @@ async fn pty_timeout_kills_and_untracks_child() {
     .unwrap_err();
     assert_eq!(error.kind, ProviderErrorKind::Timeout);
     assert_eq!(active_child_count(), 0);
+    assert_eq!(
+        zombie_children(),
+        Vec::<u32>::new(),
+        "timed-out probe left a zombie"
+    );
 
     let cancellation = CancellationToken::new();
     let cancel = cancellation.clone();
@@ -173,4 +178,31 @@ async fn pty_timeout_kills_and_untracks_child() {
     .unwrap_err();
     assert_eq!(error.kind, ProviderErrorKind::Aborted);
     assert_eq!(active_child_count(), 0);
+    assert_eq!(
+        zombie_children(),
+        Vec::<u32>::new(),
+        "cancelled probe left a zombie"
+    );
+}
+
+/// Killing a child is not the same as reaping it: until the parent waits, the process stays in the
+/// table as `Z`. `active_child_count` cannot see that, so it is read straight from `/proc`.
+fn zombie_children() -> Vec<u32> {
+    let me = std::process::id();
+    let mut zombies: Vec<u32> = std::fs::read_dir("/proc")
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|entry| {
+            let pid = entry.file_name().to_str()?.parse::<u32>().ok()?;
+            // The comm field is parenthesised and may itself contain spaces and brackets.
+            let stat = std::fs::read_to_string(entry.path().join("stat")).ok()?;
+            let mut fields = stat.rsplit_once(')')?.1.split_whitespace();
+            let state = fields.next()?;
+            let parent = fields.next()?.parse::<u32>().ok()?;
+            (parent == me && state == "Z").then_some(pid)
+        })
+        .collect();
+    zombies.sort_unstable();
+    zombies
 }
