@@ -60,11 +60,6 @@ pub fn begin_popover_drag(app: AppHandle) {
 }
 
 #[tauri::command]
-pub fn drag_popover(app: AppHandle) {
-    popover::drag(&app);
-}
-
-#[tauri::command]
 pub fn end_popover_drag(app: AppHandle) {
     popover::end_drag(&app);
 }

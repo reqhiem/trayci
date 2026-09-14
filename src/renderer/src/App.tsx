@@ -610,8 +610,11 @@ export default function App(): React.JSX.Element {
     return () => system.removeEventListener("change", apply);
   }, [settings.theme]);
 
-  // Header drag. Capture phase is required: Tauri's own mousedown listener on `document` calls
-  // stopImmediatePropagation() before starting the drag, so a bubbling listener never runs.
+  // Header drag. Tauri's own drag script moves the window: its mousedown listener on `document`
+  // asks the window manager to take over. This one only tells the backend a drag began, so the
+  // moves that follow count as the user's and a focus-out during them does not close the popover.
+  // Capture phase is required: that script calls stopImmediatePropagation(), so a bubbling listener
+  // never runs.
   useEffect(() => {
     let dragging = false;
     const start = (event: MouseEvent): void => {
@@ -627,22 +630,19 @@ export default function App(): React.JSX.Element {
       dragging = true;
       void trayci.app.beginDrag();
     };
-    // On GTK the window manager ignores the move Tauri asks for, so the backend follows the cursor
-    // itself and only needs to be told the pointer moved.
-    const move = (): void => {
-      if (dragging) void trayci.app.drag();
-    };
-    const stop = (): void => {
-      if (!dragging) return;
+    // The window manager holds the pointer while it moves the window, so the release never reaches
+    // the webview. The drag is over at the first event that arrives with the button already up.
+    const stop = (event: MouseEvent): void => {
+      if (!dragging || event.buttons & 1) return;
       dragging = false;
       void trayci.app.endDrag();
     };
     window.addEventListener("mousedown", start, true);
-    window.addEventListener("mousemove", move, true);
+    window.addEventListener("mousemove", stop, true);
     window.addEventListener("mouseup", stop, true);
     return () => {
       window.removeEventListener("mousedown", start, true);
-      window.removeEventListener("mousemove", move, true);
+      window.removeEventListener("mousemove", stop, true);
       window.removeEventListener("mouseup", stop, true);
     };
   }, []);

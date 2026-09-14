@@ -135,7 +135,6 @@ export type TrayciApi = {
   };
   app: {
     beginDrag(): Promise<void>;
-    drag(): Promise<void>;
     endDrag(): Promise<void>;
     hidePopover(): Promise<void>;
     /** False on Wayland, where GTK discards a window move and a typed position would do nothing. */
