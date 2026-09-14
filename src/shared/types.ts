@@ -137,6 +137,8 @@ export type TrayciApi = {
     beginDrag(): Promise<void>;
     endDrag(): Promise<void>;
     hidePopover(): Promise<void>;
+    /** Escape as GTK saw it, on Linux only: WebKit drops the first key after an open (issue #38). */
+    onEscape(callback: () => void): () => void;
     /** False on Wayland, where GTK discards a window move and a typed position would do nothing. */
     positionsAreReal(): Promise<boolean>;
     resizePopover(width: number, height: number): Promise<void>;
