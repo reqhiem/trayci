@@ -16,10 +16,10 @@ pub struct PopoverState {
     anchor: Mutex<Option<PhysicalPosition<f64>>>,
     /// Where the user dragged the popover; sticky across sessions.
     custom_position: Mutex<Option<PhysicalPosition<i32>>>,
-    /// Set while the user drags the header, so window-manager moves are not mistaken for one.
+    /// Set while the user drags the header, so the app's own moves are not mistaken for one.
     dragging: Mutex<bool>,
-    /// Cursor and window origin when the header drag began, both in screen pixels.
-    drag_origin: Mutex<Option<(PhysicalPosition<f64>, PhysicalPosition<i32>)>>,
+    /// Window origin when the header drag began, in screen pixels.
+    drag_origin: Mutex<Option<PhysicalPosition<i32>>>,
     /// A drag waiting to be written to settings.
     pending: Mutex<Option<PhysicalPosition<i32>>>,
     scale: Mutex<f64>,
@@ -107,58 +107,35 @@ pub fn create(app: &tauri::AppHandle) -> tauri::Result<WebviewWindow> {
     Ok(window)
 }
 
-/// Records where the cursor and the window were when the header was pressed.
+/// Records where the popover was when the header was pressed.
 ///
-/// `tao` answers Tauri's own `start_dragging` with `begin_move_drag(.., 0)`, a zero timestamp the
-/// window manager cannot tie to a user interaction: muffin drops the request and the popover never
-/// moves (issue #37). Setting the position works, so the move is driven from here instead.
+/// The move itself is the window manager's: Tauri's drag script answers the same press with
+/// `start_dragging`. The capability file refused that command until it granted
+/// `core:window:allow-start-dragging`, and that is what left the header dead on every platform
+/// (issue #37). It was not the zero timestamp `tao` passes to `begin_move_drag`: muffin 6.4.1
+/// honours the request with it.
 pub fn begin_drag(app: &tauri::AppHandle) {
     let state = app.state::<PopoverState>();
-    let origin = app.get_webview_window(LABEL).and_then(|window| {
-        window
-            .cursor_position()
-            .ok()
-            .zip(window.outer_position().ok())
-    });
+    let origin = app
+        .get_webview_window(LABEL)
+        .and_then(|window| window.outer_position().ok());
     *state.drag_origin.lock().expect("popover drag origin lock") = origin;
     state.set_dragging(origin.is_some());
-}
-
-/// Follows the cursor while the header is held.
-pub fn drag(app: &tauri::AppHandle) {
-    // Windows moves the window itself through `data-tauri-drag-region`; only GTK needs a hand.
-    if !cfg!(target_os = "linux") {
-        return;
-    }
-    let state = app.state::<PopoverState>();
-    let Some((grabbed, origin)) = *state.drag_origin.lock().expect("popover drag origin lock")
-    else {
-        return;
-    };
-    let Some(window) = app.get_webview_window(LABEL) else {
-        return;
-    };
-    let Ok(cursor) = window.cursor_position() else {
-        return;
-    };
-    let _ = window.set_position(PhysicalPosition::new(
-        origin.x + (cursor.x - grabbed.x).round() as i32,
-        origin.y + (cursor.y - grabbed.y).round() as i32,
-    ));
 }
 
 /// Ends the drag and persists where the popover actually came to rest.
 pub fn end_drag(app: &tauri::AppHandle) {
     let state = app.state::<PopoverState>();
+    // `show` drops a drag the webview never saw end, and the origin with it: carrying on would store
+    // wherever the reopened popover sits as a position the user chose.
+    if !state.is_dragging() {
+        return;
+    }
     // Not the cursor position: a window manager refuses to move a window past the edge of the work
     // area, so against an edge the pointer keeps travelling while the window does not. Storing the
     // pointer's target would save a position the popover was never at, and the clamp in `placement`
     // would then drop it somewhere else again on the next open.
-    let origin = state
-        .drag_origin
-        .lock()
-        .expect("popover drag origin lock")
-        .map(|(_, origin)| origin);
+    let origin = *state.drag_origin.lock().expect("popover drag origin lock");
     let landed = app
         .get_webview_window(LABEL)
         .and_then(|window| window.outer_position().ok())
@@ -274,7 +251,8 @@ pub fn show(
 /// `_NET_WM_STATE_DEMANDS_ATTENTION` instead, so the popover maps unfocused and neither Escape nor
 /// clicking away closes it until it has been clicked once (issue #38). A timestamp read from the
 /// server is newer than any interaction the window manager has recorded, so the same request is
-/// honoured. There is no equivalent on Wayland, where a client cannot activate itself at all.
+/// honoured. Wayland has no server time to read; GNOME 49 does advertise `xdg_activation_v1`, which
+/// this does not try yet.
 #[cfg(target_os = "linux")]
 fn focus(window: &WebviewWindow) -> tauri::Result<()> {
     let popover = window.clone();
