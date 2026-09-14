@@ -104,7 +104,38 @@ pub fn create(app: &tauri::AppHandle) -> tauri::Result<WebviewWindow> {
         }
         _ => {}
     });
+    forward_escape(&window)?;
     Ok(window)
+}
+
+/// Sends Escape to the page from GTK, above WebKit (issue #38).
+///
+/// After the popover closes itself, the first key of the next open reaches the `WebKitWebView` in
+/// GTK but never the document, so a `keydown` listener needed a second Escape. Blurring the page
+/// before hiding it did not change that. The toplevel does see every key, so Escape goes to the page
+/// as an event and stops here, or WebKit would deliver the ones it does not drop a second time.
+#[cfg(target_os = "linux")]
+fn forward_escape(window: &WebviewWindow) -> tauri::Result<()> {
+    let popover = window.clone();
+    window.run_on_main_thread(move || {
+        use gtk::{glib::Propagation, prelude::*};
+        use tauri::Emitter;
+        let Ok(gtk) = popover.gtk_window() else {
+            return;
+        };
+        gtk.connect_key_press_event(move |_, event| {
+            if event.keyval() != gtk::gdk::keys::constants::Escape {
+                return Propagation::Proceed;
+            }
+            let _ = popover.emit_to(LABEL, "popover:escape", ());
+            Propagation::Stop
+        });
+    })
+}
+
+#[cfg(not(target_os = "linux"))]
+fn forward_escape(_window: &WebviewWindow) -> tauri::Result<()> {
+    Ok(())
 }
 
 /// Records where the popover was when the header was pressed.
