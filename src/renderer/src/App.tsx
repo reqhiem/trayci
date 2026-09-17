@@ -164,11 +164,13 @@ function ProviderRow({
       <div className="provider-summary">
         <ProviderIcon provider={snapshot.provider} />
         <strong>{snapshot.displayName}</strong>
-        {settings.displayMode === "compact" && tightest && !summary?.stale ? (
+        {settings.displayMode === "compact" && tightest ? (
           <span className="compact-value">
-            {tightest.resetsAt
-              ? formatResetCountdown(tightest.resetsAt, now)
-              : tightest.label}
+            {summary?.stale
+              ? summary.text
+              : tightest.resetsAt
+                ? formatResetCountdown(tightest.resetsAt, now)
+                : tightest.label}
             <strong>
               {displayPercent(tightest, settings.percentageDisplay)}%
             </strong>
