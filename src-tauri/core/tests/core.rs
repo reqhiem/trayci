@@ -452,10 +452,18 @@ async fn a_retry_recovers_its_own_provider_without_calling_the_healthy_one() {
         if call == 0 {
             Err(ProviderError::new(ProviderErrorKind::Network, "offline").retry_at(0))
         } else {
-            Ok(snapshot(12.0, UsageStatus::Ok))
+            Ok(ProviderUsageSnapshot {
+                updated_at: now_ms(),
+                ..snapshot(12.0, UsageStatus::Ok)
+            })
         }
     });
-    let (healthy, healthy_calls) = Scripted::new("codex", |_| Ok(snapshot(3.0, UsageStatus::Ok)));
+    let (healthy, healthy_calls) = Scripted::new("codex", |_| {
+        Ok(ProviderUsageSnapshot {
+            updated_at: now_ms(),
+            ..snapshot(3.0, UsageStatus::Ok)
+        })
+    });
     let service = service(
         vec![Box::new(failing), Box::new(healthy)],
         &directory.path().join("cache.json"),
@@ -475,7 +483,7 @@ async fn a_retry_recovers_its_own_provider_without_calling_the_healthy_one() {
     assert_eq!(
         healthy_calls.load(Ordering::SeqCst),
         1,
-        "a retry cycle must not drag a healthy provider onto the network"
+        "a retry cycle must not drag a fresh healthy provider onto the network"
     );
 
     service.refresh_all(UsageFetchReason::Retry).await;
@@ -588,6 +596,30 @@ fn only_a_manual_refresh_overrides_a_backoff_we_invented() {
         None,
         None,
         1_000,
+        interval
+    ));
+}
+
+#[test]
+fn a_retry_cycle_refreshes_a_provider_whose_snapshot_went_stale() {
+    let interval = 15 * 60_000;
+    let now = 3 * 24 * 60 * 60_000;
+
+    assert!(
+        should_fetch(
+            UsageFetchReason::Retry,
+            None,
+            Some(now - 2 * 24 * 60 * 60_000),
+            now,
+            interval
+        ),
+        "a provider stuck in backoff must not starve the others out of every cycle (#54)"
+    );
+    assert!(!should_fetch(
+        UsageFetchReason::Retry,
+        None,
+        Some(now - 60_000),
+        now,
         interval
     ));
 }

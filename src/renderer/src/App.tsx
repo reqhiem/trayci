@@ -164,7 +164,7 @@ function ProviderRow({
       <div className="provider-summary">
         <ProviderIcon provider={snapshot.provider} />
         <strong>{snapshot.displayName}</strong>
-        {settings.displayMode === "compact" && tightest ? (
+        {settings.displayMode === "compact" && tightest && !summary?.stale ? (
           <span className="compact-value">
             {tightest.resetsAt
               ? formatResetCountdown(tightest.resetsAt, now)
