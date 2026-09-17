@@ -71,6 +71,23 @@ describe("presentation helpers", () => {
     });
     expect(statusSummary({ ...snapshot, windows: [] }, 0)).toBeNull();
   });
+
+  it("ages out a reading that loaded as ok but has not been refreshed since", () => {
+    // The bug in #54: a snapshot the cache marked `ok` days ago kept rendering a healthy
+    // countdown, because only the load-time status field was ever consulted.
+    const twoDays = 2 * 24 * 60 * 60_000;
+    const aged = {
+      ...snapshot,
+      windows: snapshot.windows.map((window) => ({
+        ...window,
+        resetsAt: twoDays + 90 * 60_000,
+      })),
+    };
+    expect(statusSummary(aged, twoDays)).toEqual({
+      text: "Updated 2d 0h ago",
+      stale: true,
+    });
+  });
 });
 
 describe("providerRank", () => {

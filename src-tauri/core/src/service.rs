@@ -24,7 +24,10 @@ type Retry = (u64, bool);
 
 /// Which providers a refresh cycle actually calls. Every reason but a manual one reuses a snapshot
 /// that is younger than one poll interval, so a startup with a warm cache and a retry cycle for one
-/// failing provider stay off the network instead of dragging every provider along with them.
+/// failing provider stay off the network instead of dragging every provider along with them. A
+/// retry cycle still picks up whatever has gone stale: a provider stuck in permanent backoff
+/// retries often enough to pre-empt the poll tick forever, which froze every healthy provider for
+/// the rest of the session (#54).
 pub fn should_fetch(
     reason: UsageFetchReason,
     retry: Option<Retry>,
@@ -37,7 +40,6 @@ pub fn should_fetch(
         return retry_at <= now || (manual && !from_provider);
     }
     match reason {
-        UsageFetchReason::Retry => false,
         UsageFetchReason::Manual | UsageFetchReason::Resume | UsageFetchReason::PopoverOpen => true,
         _ => updated_at.map_or(true, |updated| now.saturating_sub(updated) >= interval_ms),
     }
