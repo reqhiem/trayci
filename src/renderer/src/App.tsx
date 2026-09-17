@@ -666,13 +666,19 @@ export default function App(): React.JSX.Element {
   }, [view]);
 
   useEffect(() => {
-    const escape = (event: KeyboardEvent): void => {
-      if (event.key !== "Escape") return;
+    const close = (): void => {
       if (view === "usage" && pinnedProvider) setPinnedProvider(null);
       else void trayci.app.hidePopover();
     };
+    const escape = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") close();
+    };
     window.addEventListener("keydown", escape);
-    return () => window.removeEventListener("keydown", escape);
+    const unlisten = trayci.app.onEscape(close);
+    return () => {
+      window.removeEventListener("keydown", escape);
+      unlisten();
+    };
   }, [view, pinnedProvider]);
 
   // The order set in Settings wins. Providers it does not mention rank equal, so they keep the

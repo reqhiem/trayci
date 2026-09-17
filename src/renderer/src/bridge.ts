@@ -7,24 +7,24 @@ import type {
   UsageState,
 } from "../../shared/types";
 
+function listenTo<T>(name: string, callback: (payload: T) => void): () => void {
+  let unlisten: (() => void) | undefined;
+  let cancelled = false;
+  void listen<T>(name, (event) => callback(event.payload)).then((release) => {
+    if (cancelled) release();
+    else unlisten = release;
+  });
+  return () => {
+    cancelled = true;
+    unlisten?.();
+  };
+}
+
 export const trayci: TrayciApi = {
   usage: {
     getState: () => invoke<UsageState>("get_usage_state"),
     refreshAll: () => invoke<UsageState>("refresh_all"),
-    subscribe(callback) {
-      let unlisten: (() => void) | undefined;
-      let cancelled = false;
-      void listen<UsageState>("usage:state-changed", (event) =>
-        callback(event.payload),
-      ).then((release) => {
-        if (cancelled) release();
-        else unlisten = release;
-      });
-      return () => {
-        cancelled = true;
-        unlisten?.();
-      };
-    },
+    subscribe: (callback) => listenTo("usage:state-changed", callback),
   },
   settings: {
     get: () => invoke<TrayciSettings>("get_settings"),
@@ -36,6 +36,7 @@ export const trayci: TrayciApi = {
     endDrag: () => invoke<void>("end_popover_drag"),
     positionsAreReal: () => invoke<boolean>("positions_are_real"),
     hidePopover: () => invoke<void>("hide_popover"),
+    onEscape: (callback) => listenTo("popover:escape", callback),
     resizePopover: (width, height) =>
       invoke<void>("resize_popover", { width, height }),
     quit: () => invoke<void>("quit_app"),
