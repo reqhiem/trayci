@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Re-render the landing clips (needs Node >= 22 and ffmpeg):  site/video/build.sh [out-dir] [clip...]
-# Raw renders stay in renders/ (not committed); web encodes and posters go to out-dir.
+# Raw renders stay in renders/ (not committed); web encodes and posters go to out-dir, by
+# default the site's public/media, which is what the landing page ships.
 set -euo pipefail
 cd "$(dirname "$0")"
-out=${1:-renders/web}
+out=${1:-../public/media}
 shift $(($# > 0))
 clips=${*:-hero detail themes}
 declare -A poster=([hero]=3.6 [detail]=3.4 [themes]=1.07) # poster frame, seconds
