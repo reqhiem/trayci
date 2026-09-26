@@ -33,9 +33,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
-  # Pull requests only build: the github-pages environment deploys from main alone.
+  # Pull requests and other branches only build: the site deploys from main alone.
   deploy:
-    if: github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
     permissions:
