@@ -13,6 +13,7 @@ import {
   formatAge,
   formatResetCountdown,
   providerRank,
+  SOURCE_LABELS,
   statusSummary,
   tightestWindow,
 } from "../../shared/presentation";
@@ -232,6 +233,7 @@ function ProviderDetail({
         </div>
         <span>
           {formatAge(snapshot.updatedAt, now, "just now")}
+          {snapshot.source ? ` · ${SOURCE_LABELS[snapshot.source]}` : ""}
           {pinned ? " · pinned" : ""}
         </span>
       </header>

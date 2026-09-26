@@ -1,7 +1,7 @@
 use super::{
     common::{
-        clamp, epoch_ms, home_dir, reset_from_text, reset_phrase, resolve_executable, run_pty,
-        PtyOptions,
+        clamp, epoch_ms, home_dir, rate_limited, reset_from_text, reset_phrase, resolve_executable,
+        run_pty, PtyOptions,
     },
     google_oauth,
 };
@@ -405,22 +405,11 @@ impl UsageProvider for AntigravityProvider {
             response = quota(&access, &context.cancellation).await?;
         }
         if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
-            let retry = response
-                .headers()
-                .get("retry-after")
-                .and_then(|value| value.to_str().ok())
-                .and_then(|value| value.parse::<u64>().ok());
-            return Err(match retry {
-                Some(seconds) => ProviderError::new(
-                    ProviderErrorKind::RateLimited,
-                    "Antigravity usage is rate limited",
-                )
-                .retry_at(context.now + seconds * 1000),
-                None => ProviderError::new(
-                    ProviderErrorKind::RateLimited,
-                    "Antigravity usage is rate limited",
-                ),
-            });
+            return Err(rate_limited(
+                response.headers(),
+                context.now,
+                "Antigravity usage is rate limited",
+            ));
         }
         if !response.status().is_success() {
             return Err(ProviderError::new(

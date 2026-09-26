@@ -1,4 +1,4 @@
-import type { ProviderUsageSnapshot, UsageWindow } from "./types";
+import type { ProviderUsageSnapshot, UsageSource, UsageWindow } from "./types";
 
 /**
  * Where a provider sits in the order the user arranged, for sorting. Ids the order does not
@@ -40,6 +40,15 @@ export function formatAge(
     ? `Updated ${formatDuration(minutes)} ago`
     : `Updated ${never}`;
 }
+
+/** Where a reading came from, so a scraped or cached number is not mistaken for the API's. */
+export const SOURCE_LABELS: Record<UsageSource, string> = {
+  oauth: "via API",
+  api: "via API",
+  rpc: "via RPC",
+  cli: "via CLI",
+  cache: "from cache",
+};
 
 /** Mirrors STALE_AFTER_MS in src-tauri/core/src/service.rs. */
 export const STALE_AFTER_MS = 30 * 60_000;

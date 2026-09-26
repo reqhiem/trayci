@@ -2,6 +2,7 @@ use crate::model::{ProviderError, ProviderErrorKind};
 use chrono::DateTime;
 use portable_pty::{native_pty_system, Child, CommandBuilder, PtySize};
 use regex::Regex;
+use reqwest::header::{HeaderMap, RETRY_AFTER};
 use std::{
     collections::{HashMap, HashSet},
     env, fs,
@@ -237,6 +238,27 @@ pub fn strip_terminal_codes(value: &str) -> String {
             matches!(*character, '\t' | '\n') || (*character >= ' ' && *character != '\u{7f}')
         })
         .collect()
+}
+
+/// A 429 that waits for the server's `retry-after`, in either of its forms: delta-seconds or an
+/// HTTP-date. Capped at a day, so a corrupt or hostile header cannot shelve the provider for longer.
+pub fn rate_limited(headers: &HeaderMap, now: u64, message: &str) -> ProviderError {
+    const DAY_MS: u64 = 24 * 60 * 60_000;
+    let retry_at = headers
+        .get(RETRY_AFTER)
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .and_then(|value| match value.parse::<u64>() {
+            Ok(seconds) => Some(now + seconds.min(DAY_MS / 1000) * 1000),
+            Err(_) => u64::try_from(DateTime::parse_from_rfc2822(value).ok()?.timestamp_millis())
+                .ok()
+                .map(|at| at.min(now + DAY_MS)),
+        })
+        .filter(|&at| at > now);
+    ProviderError {
+        retry_at,
+        ..ProviderError::new(ProviderErrorKind::RateLimited, message)
+    }
 }
 
 pub fn clamp(value: f64) -> f64 {
