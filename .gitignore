@@ -8,3 +8,4 @@ dist/
 .astro/
 site/video/renders/
 site/video/snapshots/
+__pycache__/
