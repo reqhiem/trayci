@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  <img src="site/public/screens/showcase.png" width="880" alt="The Trayci popover listing Antigravity, Claude Code, and Codex quota meters, with the Claude Code detail pane open">
+  <img src="site/public/screens/showcase.png" width="880" alt="The Trayci popover under its tray icon, listing Antigravity, Claude, and Codex quota meters with the Claude detail pane pinned, beside the light theme">
 </p>
 
 Trayci is a local-first system tray app for Linux and Windows. It shows how much of each Claude Code, Codex, and Google Antigravity quota window you have used and when it resets, in a popover one click from the tray. It reuses each provider CLI's existing sign-in and never stores credentials.
@@ -35,9 +35,9 @@ Trayci is a local-first system tray app for Linux and Windows. It shows how much
 - **Drag it anywhere.** On X11 the popover reopens where you left it.
 - **Native packages:** `.deb` and `.AppImage` for Linux amd64, an NSIS installer for Windows x64.
 
-|                                                          Detailed                                                           |                                                          Compact                                                           |                                                                      Settings                                                                       |
-| :-------------------------------------------------------------------------------------------------------------------------: | :------------------------------------------------------------------------------------------------------------------------: | :-------------------------------------------------------------------------------------------------------------------------------------------------: |
-| <img src="site/public/screens/usage-detailed-dark.png" width="260" alt="Detailed view with a meter for every quota window"> | <img src="site/public/screens/usage-compact-dark.png" width="260" alt="Compact view with each provider's tightest window"> | <img src="site/public/screens/settings-dark.png" width="260" alt="Settings for refresh, appearance, notifications, providers, and window position"> |
+|                                                          Detailed                                                           |                                                          Compact                                                           |                                                 Light theme                                                 |
+| :-------------------------------------------------------------------------------------------------------------------------: | :------------------------------------------------------------------------------------------------------------------------: | :---------------------------------------------------------------------------------------------------------: |
+| <img src="site/public/screens/usage-detailed-dark.png" width="260" alt="Detailed view with a meter for every quota window"> | <img src="site/public/screens/usage-compact-dark.png" width="260" alt="Compact view with each provider's tightest window"> | <img src="site/public/screens/usage-detailed-light.png" width="260" alt="Detailed view in the light theme"> |
 
 ## Install
 
@@ -68,7 +68,7 @@ Trayci needs at least one provider CLI that is installed and signed in: `claude`
 | Codex       | `codex app-server` over stdio                                                       | The `codex` CLI's `/status` panel                                     |
 | Antigravity | The signed-in `agy` CLI's `/usage` panel                                            | Google Code Assist quota, when Gemini OAuth credentials are available |
 
-Credentials are only read, never copied or written. Settings and a credential-free cache live in `$XDG_CONFIG_HOME/trayci`, or `~/.config/trayci` when it is unset.
+Credentials are only read, never copied or written. On Linux, settings and a credential-free cache live in `$XDG_CONFIG_HOME/trayci`, or `~/.config/trayci` when it is unset.
 
 ## Platform notes
 
