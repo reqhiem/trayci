@@ -74,6 +74,8 @@ pnpm cli -- usage antigravity
 pnpm cli -- doctor
 ```
 
+On Windows the installed `trayci.exe` is a GUI app, so an unpiped run does not make the shell wait: the output lands after the prompt and no exit code is recorded. Pipe it or wait on it to get both: `trayci.exe usage --json | ConvertFrom-Json` in PowerShell, `start /wait trayci.exe usage` in `cmd`.
+
 Lefthook formats staged files with Prettier before each commit. Run `pnpm exec lefthook install` if hooks were not installed automatically.
 
 ## Releases

@@ -191,20 +191,23 @@ async fn rpc(
     executable: &Path,
     cancellation: &tokio_util::sync::CancellationToken,
 ) -> Result<Value, ProviderError> {
-    let mut child = Command::new(executable)
+    let mut command = Command::new(executable);
+    command
         .args(["app-server", "--stdio"])
         .current_dir(bounded_cwd()?)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|error| {
-            ProviderError::new(
-                ProviderErrorKind::Unknown,
-                format!("Codex app-server failed to start: {error}"),
-            )
-        })?;
+        .kill_on_drop(true);
+    // CREATE_NO_WINDOW: the GUI-subsystem app has no console to lend, so Windows would open one.
+    #[cfg(windows)]
+    command.creation_flags(0x0800_0000);
+    let mut child = command.spawn().map_err(|error| {
+        ProviderError::new(
+            ProviderErrorKind::Unknown,
+            format!("Codex app-server failed to start: {error}"),
+        )
+    })?;
     let mut stdin = child
         .stdin
         .take()
