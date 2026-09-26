@@ -9,3 +9,5 @@ dist/
 site/video/renders/
 site/video/snapshots/
 __pycache__/
+# Pixabay sound effects of the media-use skill: their license bars redistributing them as-is.
+.agents/skills/media-use/audio/assets/sfx/*.mp3
