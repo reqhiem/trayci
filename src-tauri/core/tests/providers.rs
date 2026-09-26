@@ -5,7 +5,7 @@ use trayci_core::providers::{
     antigravity::{normalize_antigravity_quota, parse_antigravity_usage},
     claude::{normalize_claude_usage, parse_claude_usage},
     codex::{normalize_codex_rate_limits, parse_codex_usage},
-    common::{active_child_count, run_pty, strip_terminal_codes, PtyOptions},
+    common::{active_child_count, rate_limited, run_pty, strip_terminal_codes, PtyOptions},
 };
 use trayci_core::ProviderErrorKind;
 
@@ -49,6 +49,45 @@ fn claude_legacy_ignores_unknown_keys() {
             .collect::<Vec<_>>(),
         [("session", 0.5), ("weekly", 31.0), ("sonnet-weekly", 12.0)]
     );
+}
+
+#[test]
+fn claude_unreadable_limits_fall_back_to_flat_keys() {
+    let windows = normalize_claude_usage(&json!({
+        "limits":[{"kind":"session","percent":7}],
+        "five_hour":{"used_percentage":7},
+        "seven_day":{"utilization":null,"used_percentage":40}
+    }));
+    assert_eq!(
+        windows
+            .iter()
+            .map(|value| (value.id.as_str(), value.used_percent))
+            .collect::<Vec<_>>(),
+        [("session", 7.0), ("weekly", 40.0)]
+    );
+}
+
+#[test]
+fn retry_after_takes_seconds_or_a_date_and_caps_at_a_day() {
+    let retry_at = |value: &str| {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(reqwest::header::RETRY_AFTER, value.parse().unwrap());
+        let error = rate_limited(&headers, NOW, "limited");
+        assert_eq!(error.kind, ProviderErrorKind::RateLimited);
+        error.retry_at
+    };
+    const DAY: u64 = 86_400_000;
+    assert_eq!(retry_at("120"), Some(NOW + 120_000));
+    assert_eq!(retry_at("18446744073709551615"), Some(NOW + DAY));
+    // NOW is 2025-08-08T12:26:40Z.
+    assert_eq!(
+        retry_at("Fri, 08 Aug 2025 12:36:40 GMT"),
+        Some(NOW + 600_000)
+    );
+    assert_eq!(retry_at("Wed, 21 Oct 2037 07:28:00 GMT"), Some(NOW + DAY));
+    assert_eq!(retry_at("Wed, 21 Oct 2015 07:28:00 GMT"), None);
+    assert_eq!(retry_at("0"), None);
+    assert_eq!(retry_at("soon"), None);
 }
 
 #[test]

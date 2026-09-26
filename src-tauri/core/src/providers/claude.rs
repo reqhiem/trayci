@@ -1,5 +1,6 @@
 use super::common::{
-    clamp, epoch_ms, home_dir, reset_from_text, resolve_executable, run_pty, PtyOptions,
+    clamp, epoch_ms, home_dir, rate_limited, reset_from_text, resolve_executable, run_pty,
+    PtyOptions,
 };
 use crate::{model::*, service::UsageProvider};
 use async_trait::async_trait;
@@ -57,13 +58,17 @@ fn credential_path() -> Option<PathBuf> {
         })
 }
 
-fn read_credential() -> Option<(String, Option<u64>)> {
+/// The token, whatever its `expiresAt` says: that field is not authoritative for the usage
+/// endpoint, and only a running Claude Code refreshes it, so a poller finds it "expired" most of the
+/// time. The server's 401 decides instead.
+fn read_credential() -> Option<String> {
     let value: Value = serde_json::from_slice(&fs::read(credential_path()?).ok()?).ok()?;
-    let oauth = value.get("claudeAiOauth")?;
-    Some((
-        oauth.get("accessToken")?.as_str()?.to_owned(),
-        oauth.get("expiresAt").and_then(Value::as_u64),
-    ))
+    Some(
+        value
+            .pointer("/claudeAiOauth/accessToken")?
+            .as_str()?
+            .to_owned(),
+    )
 }
 
 fn window(
@@ -85,11 +90,7 @@ fn window(
 
 pub fn normalize_claude_usage(raw: &Value) -> Vec<UsageWindow> {
     let mut windows = Vec::new();
-    if let Some(limits) = raw
-        .get("limits")
-        .and_then(Value::as_array)
-        .filter(|limits| !limits.is_empty())
-    {
+    if let Some(limits) = raw.get("limits").and_then(Value::as_array) {
         for limit in limits {
             let Some(group @ ("weekly" | "session")) = limit.get("group").and_then(Value::as_str)
             else {
@@ -116,7 +117,9 @@ pub fn normalize_claude_usage(raw: &Value) -> Vec<UsageWindow> {
                 limit.get("resets_at"),
             ));
         }
-    } else {
+    }
+    // Also when `limits` is there but none of it was readable: the flat keys still carry the answer.
+    if windows.is_empty() {
         for (key, label) in [
             ("five_hour", "5h"),
             ("seven_day", "Weekly"),
@@ -128,6 +131,7 @@ pub fn normalize_claude_usage(raw: &Value) -> Vec<UsageWindow> {
             let Some(percent) = value
                 .get("utilization")
                 .and_then(Value::as_f64)
+                .or_else(|| value.get("used_percentage").and_then(Value::as_f64))
                 .filter(|value| value.is_finite())
             else {
                 continue;
@@ -148,16 +152,16 @@ pub fn normalize_claude_usage(raw: &Value) -> Vec<UsageWindow> {
             ));
         }
     }
-    windows.sort_by_key(|value| {
-        if value.id == "session" {
-            0
-        } else if value.id == "weekly" {
-            1
-        } else {
-            2
-        }
-    });
+    windows.sort_by_key(rank);
     windows
+}
+
+fn rank(window: &UsageWindow) -> u8 {
+    match window.id.as_str() {
+        "session" => 0,
+        "weekly" => 1,
+        _ => 2,
+    }
 }
 
 fn slug(value: &str) -> String {
@@ -166,6 +170,50 @@ fn slug(value: &str) -> String {
         .replace_all(&value.to_lowercase(), "-")
         .trim_matches('-')
         .into()
+}
+
+async fn oauth(
+    token: &str,
+    context: &UsageFetchContext,
+) -> Result<Vec<UsageWindow>, ProviderError> {
+    let request = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .unwrap()
+        .get("https://api.anthropic.com/api/oauth/usage")
+        .bearer_auth(token)
+        .header("anthropic-beta", "oauth-2025-04-20")
+        .header("user-agent", concat!("trayci/", env!("CARGO_PKG_VERSION")));
+    let response = tokio::select! {
+        _ = context.cancellation.cancelled() => return Err(ProviderError::new(ProviderErrorKind::Aborted, "Cancelled")),
+        result = request.send() => result.map_err(|_| ProviderError::new(ProviderErrorKind::Network, "Claude usage request failed"))?,
+    };
+    if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        return Err(rate_limited(
+            response.headers(),
+            context.now,
+            "Claude usage is rate limited",
+        ));
+    }
+    if !response.status().is_success() {
+        return Err(ProviderError::new(
+            ProviderErrorKind::Network,
+            format!("Claude usage returned {}", response.status()),
+        ));
+    }
+    let windows = response
+        .json::<Value>()
+        .await
+        .map(|raw| normalize_claude_usage(&raw))
+        .unwrap_or_default();
+    if windows.is_empty() {
+        Err(ProviderError::new(
+            ProviderErrorKind::Parse,
+            "Claude returned no usage windows",
+        ))
+    } else {
+        Ok(windows)
+    }
 }
 
 pub fn parse_claude_usage(output: &str, now: u64) -> Vec<UsageWindow> {
@@ -224,48 +272,23 @@ impl UsageProvider for ClaudeProvider {
         let executable = detection.executable_path.ok_or_else(|| {
             ProviderError::new(ProviderErrorKind::NotInstalled, "Claude CLI not detected")
         })?;
-        if let Some((token, _)) = read_credential()
-            .filter(|(_, expires)| expires.map_or(true, |expires| expires > context.now))
-        {
-            let request = reqwest::Client::builder()
-                .timeout(Duration::from_secs(10))
-                .build()
-                .unwrap()
-                .get("https://api.anthropic.com/api/oauth/usage")
-                .bearer_auth(token)
-                .header("anthropic-beta", "oauth-2025-04-20")
-                .header("user-agent", concat!("trayci/", env!("CARGO_PKG_VERSION")));
-            let response = tokio::select! { _ = context.cancellation.cancelled() => return Err(ProviderError::new(ProviderErrorKind::Aborted, "Cancelled")), result = request.send() => result };
-            if let Ok(response) = response {
-                if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
-                    let retry = response
-                        .headers()
-                        .get("retry-after")
-                        .and_then(|value| value.to_str().ok())
-                        .and_then(|value| value.parse::<u64>().ok());
-                    return Err(match retry {
-                        Some(seconds) => ProviderError::new(
-                            ProviderErrorKind::RateLimited,
-                            "Claude usage is rate limited",
-                        )
-                        .retry_at(context.now + seconds * 1000),
-                        None => ProviderError::new(
-                            ProviderErrorKind::RateLimited,
-                            "Claude usage is rate limited",
-                        ),
-                    });
+        let tried = read_credential();
+        if let Some(token) = &tried {
+            match oauth(token, context).await {
+                Ok(windows) => return Ok(self.snapshot(windows, context.now, UsageSource::Oauth)),
+                // A 429 is the server's answer, and spawning Claude Code cannot change it.
+                Err(error)
+                    if matches!(
+                        error.kind,
+                        ProviderErrorKind::RateLimited | ProviderErrorKind::Aborted
+                    ) =>
+                {
+                    return Err(error)
                 }
-                if response.status().is_success() {
-                    if let Ok(raw) = response.json::<Value>().await {
-                        let windows = normalize_claude_usage(&raw);
-                        if !windows.is_empty() {
-                            return Ok(self.snapshot(windows, context.now, UsageSource::Oauth));
-                        }
-                    }
-                }
+                Err(_) => {}
             }
         }
-        let output = run_pty(PtyOptions {
+        let cli = run_pty(PtyOptions {
             executable: &executable,
             args: &[],
             input: "/usage",
@@ -279,15 +302,36 @@ impl UsageProvider for ClaudeProvider {
                     .is_match(value)
             }),
         })
-        .await?;
-        let windows = parse_claude_usage(&output, context.now);
-        if windows.is_empty() {
-            Err(ProviderError::new(
-                ProviderErrorKind::Parse,
-                "Could not parse Claude usage",
-            ))
-        } else {
-            Ok(self.snapshot(windows, context.now, UsageSource::Cli))
+        .await
+        .and_then(|output| {
+            let windows = parse_claude_usage(&output, context.now);
+            if windows.is_empty() {
+                Err(ProviderError::new(
+                    ProviderErrorKind::Parse,
+                    "Could not parse Claude usage",
+                ))
+            } else {
+                Ok(windows)
+            }
+        });
+        if context.cancellation.is_cancelled() {
+            return Err(ProviderError::new(ProviderErrorKind::Aborted, "Cancelled"));
         }
+        // The CLI refreshes an expired token on its way to `/usage`, whether or not its TUI scraped.
+        // The API's numbers with that token beat the scrape, and the next poll starts from a token
+        // that works instead of repeating the whole dance.
+        if let Some(token) = read_credential().filter(|token| Some(token) != tried.as_ref()) {
+            if let Ok(mut windows) = oauth(&token, context).await {
+                let scraped = cli
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|window| windows.iter().all(|value| value.id != window.id))
+                    .collect::<Vec<_>>();
+                windows.extend(scraped);
+                windows.sort_by_key(rank);
+                return Ok(self.snapshot(windows, context.now, UsageSource::Oauth));
+            }
+        }
+        cli.map(|windows| self.snapshot(windows, context.now, UsageSource::Cli))
     }
 }
