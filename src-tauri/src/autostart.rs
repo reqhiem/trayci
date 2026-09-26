@@ -47,7 +47,24 @@ pub async fn set_enabled(enabled: bool) -> io::Result<()> {
     tokio::fs::rename(temporary, path).await
 }
 
-#[cfg(not(target_os = "linux"))]
+/// Named after `productName`: the NSIS uninstaller deletes exactly this Run value.
+#[cfg(windows)]
+pub async fn set_enabled(enabled: bool) -> io::Result<()> {
+    use winreg::{enums::HKEY_CURRENT_USER, RegKey};
+
+    let (key, _) = RegKey::predef(HKEY_CURRENT_USER)
+        .create_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Run")?;
+    if !enabled {
+        return match key.delete_value("Trayci") {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            result => result,
+        };
+    }
+    let executable = std::env::current_exe()?;
+    key.set_value("Trayci", &format!("\"{}\"", executable.display()))
+}
+
+#[cfg(not(any(target_os = "linux", windows)))]
 pub async fn set_enabled(_enabled: bool) -> io::Result<()> {
     Ok(())
 }

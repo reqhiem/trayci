@@ -4408,6 +4408,8 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tokio",
  "trayci-core",
+ "windows-sys 0.61.2",
+ "winreg 0.10.1",
 ]
 
 [[package]]

@@ -31,3 +31,9 @@ trayci-core = { path = "core" }
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
 gdkx11 = "0.18"
+
+# Both already in the tree through tauri and portable-pty: `AttachConsole` for CLI output from the
+# GUI-subsystem exe, and the HKCU Run value for start at login (issue #52).
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
+winreg = "0.10"
