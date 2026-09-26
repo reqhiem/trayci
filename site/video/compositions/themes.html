@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1200, height=900" />
+    <title>Trayci themes</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <link rel="stylesheet" href="assets/app.css" />
+    <link rel="stylesheet" href="assets/video.css" />
+    <script src="assets/video.js"></script>
+    <style>
+      #themes-pop {
+        left: 56px;
+        top: 77px;
+      }
+      #themes .window {
+        width: 680px;
+      }
+      #themes .caption {
+        left: 56px;
+        top: 779px;
+        font-size: 34px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="themes"
+      class="stage"
+      data-composition-id="themes"
+      data-start="0"
+      data-duration="6.6"
+      data-width="1200"
+      data-height="900"
+    >
+      <div class="pop" id="themes-pop">
+        <div class="zoom" style="zoom: 1.6">
+          <!-- The light twin is cloned from this window at build time (same markup, light tokens). -->
+          <div class="window" id="themes-dark"><main class="has-detail"><section class="master"><header class="topbar" data-tauri-drag-region="deep"><h1>Usage</h1><div class="header-actions"><span>all agents</span><button class="icon-button" type="button" aria-label="Refresh usage"><span class="" aria-hidden="true">↻</span></button><button class="icon-button settings-button" type="button" aria-label="Settings">···</button></div></header><div class="density" aria-label="Information density"><button type="button" aria-pressed="true">Detailed</button><button type="button" aria-pressed="false">Compact</button></div><div class="provider-list" aria-live="polite"><button class="provider-row provider-ok" type="button" aria-busy="false" aria-expanded="false"><div class="provider-summary"><span class="provider-icon antigravity-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2.8c.8 5.1 4.1 8.4 9.2 9.2-5.1.8-8.4 4.1-9.2 9.2-.8-5.1-4.1-8.4-9.2-9.2 5.1-.8 8.4-4.1 9.2-9.2Z"></path><path d="M18.2 3.2c.2 1.5 1.1 2.4 2.6 2.6-1.5.2-2.4 1.1-2.6 2.6-.2-1.5-1.1-2.4-2.6-2.6 1.5-.2 2.4-1.1 2.6-2.6Z"></path></svg></span><strong>Antigravity</strong><span class="reset-summary">Resets in 47m</span><span class="chevron" aria-hidden="true"></span></div><div class="inline-metrics inline-metrics-grid"><div class="metric metric-dense"><div class="metric-copy"><strong>Gem 5h</strong></div><div class="metric-line"><div class="progress progress-high" role="progressbar" aria-label="Gemini 5h usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="88"><span style="width: 88%;"></span></div><strong><span class="roll"><span>88%</span><span>12%</span></span></strong></div></div><div class="metric metric-dense"><div class="metric-copy"><strong>Gem wk</strong></div><div class="metric-line"><div class="progress progress-low" role="progressbar" aria-label="Gemini Weekly usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="36"><span style="width: 36%;"></span></div><strong><span class="roll"><span>36%</span><span>64%</span></span></strong></div></div><div class="metric metric-dense"><div class="metric-copy"><strong>C/G 5h</strong></div><div class="metric-line"><div class="progress progress-critical" role="progressbar" aria-label="Claude/GPT 5h usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="93"><span style="width: 93%;"></span></div><strong><span class="roll"><span>93%</span><span>7%</span></span></strong></div></div><div class="metric metric-dense"><div class="metric-copy"><strong>C/G wk</strong></div><div class="metric-line"><div class="progress progress-medium" role="progressbar" aria-label="Claude/GPT Weekly usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="51"><span style="width: 51%;"></span></div><strong><span class="roll"><span>51%</span><span>49%</span></span></strong></div></div></div></button><button class="provider-row provider-ok" type="button" aria-busy="false" aria-expanded="true"><div class="provider-summary"><span class="provider-icon claude-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4M8.4 3.8l7.2 16.4M20.2 8.4 3.8 15.6M15.6 3.8 8.4 20.2M20.2 15.6 3.8 8.4"></path></svg></span><strong>Claude</strong><span class="reset-summary">Resets in 3d 6h</span><span class="chevron" aria-hidden="true"></span></div><div class="inline-metrics inline-metrics-grid"><div class="metric metric-dense"><div class="metric-copy"><strong>5h</strong></div><div class="metric-line"><div class="progress progress-low" role="progressbar" aria-label="5h usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="42"><span style="width: 42%;"></span></div><strong><span class="roll"><span>42%</span><span>58%</span></span></strong></div></div><div class="metric metric-dense"><div class="metric-copy"><strong>wk</strong></div><div class="metric-line"><div class="progress progress-medium" role="progressbar" aria-label="Weekly usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="68"><span style="width: 68%;"></span></div><strong><span class="roll"><span>68%</span><span>32%</span></span></strong></div></div><div class="metric metric-dense"><div class="metric-copy"><strong>Fable</strong></div><div class="metric-line"><div class="progress progress-low" role="progressbar" aria-label="Fable usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="31"><span style="width: 31%;"></span></div><strong><span class="roll"><span>31%</span><span>69%</span></span></strong></div></div></div></button><button class="provider-row provider-ok" type="button" aria-busy="false" aria-expanded="false"><div class="provider-summary"><span class="provider-icon codex-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3.1a4.4 4.4 0 0 1 4 2.5 4.4 4.4 0 0 1 3.8 6.6 4.4 4.4 0 0 1-3.7 6.3 4.4 4.4 0 0 1-7.9-.1 4.4 4.4 0 0 1-3.9-6.3 4.4 4.4 0 0 1 3.8-6.5A4.4 4.4 0 0 1 12 3.1Z"></path><path d="m8.1 5.6 7.8 4.5v8.4M4.3 12.1l7.7-4.5 7.8 4.6M8.2 18.4V9.5l7.7-3.9M16.1 18.5 8.2 14l-3.9 2.2M12 20.9v-9l-7.7-4.4"></path></svg></span><strong>Codex</strong><span class="reset-summary">Resets in 5d 2h</span><span class="chevron" aria-hidden="true"></span></div><div class="inline-metrics"><div class="metric metric-dense"><div class="metric-copy"><strong>5h</strong></div><div class="metric-line"><div class="progress progress-low" role="progressbar" aria-label="5h usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="12"><span style="width: 12%;"></span></div><strong><span class="roll"><span>12%</span><span>88%</span></span></strong></div></div><div class="metric metric-dense"><div class="metric-copy"><strong>wk</strong></div><div class="metric-line"><div class="progress progress-medium" role="progressbar" aria-label="Weekly usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="57"><span style="width: 57%;"></span></div><strong><span class="roll"><span>57%</span><span>43%</span></span></strong></div></div></div></button></div></section><aside class="provider-detail" aria-label="Claude details"><header data-tauri-drag-region="deep"><div class="detail-title"><span class="provider-icon claude-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4M8.4 3.8l7.2 16.4M20.2 8.4 3.8 15.6M15.6 3.8 8.4 20.2M20.2 15.6 3.8 8.4"></path></svg></span><strong>Claude</strong></div><span>Updated just now · via API · pinned</span></header><div class="detail-metrics"><div class="metric"><div class="metric-copy"><strong>5h</strong></div><div class="metric-line"><div class="progress progress-low" role="progressbar" aria-label="5h usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="42"><span style="width: 42%;"></span></div><strong><span class="roll"><span>42%</span><span>58%</span></span></strong></div><div class="metric-meta"><span><span class="roll"><span>42% used</span><span>58% remaining</span></span></span><span>Resets in 2h 14m</span></div></div><div class="metric"><div class="metric-copy"><strong>Weekly</strong></div><div class="metric-line"><div class="progress progress-medium" role="progressbar" aria-label="Weekly usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="68"><span style="width: 68%;"></span></div><strong><span class="roll"><span>68%</span><span>32%</span></span></strong></div><div class="metric-meta"><span><span class="roll"><span>68% used</span><span>32% remaining</span></span></span><span>Resets in 3d 6h</span></div></div><div class="metric"><div class="metric-copy"><strong>Fable</strong></div><div class="metric-line"><div class="progress progress-low" role="progressbar" aria-label="Fable usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="31"><span style="width: 31%;"></span></div><strong><span class="roll"><span>31%</span><span>69%</span></span></strong></div><div class="metric-meta"><span><span class="roll"><span>31% used</span><span>69% remaining</span></span></span><span>Resets in 3d 6h</span></div></div></div></aside></main></div>
+        </div>
+      </div>
+
+      <p class="caption">Dark or light, used or remaining — your call.</p>
+    </div>
+
+    <script>
+      (() => {
+        const stage = document.getElementById("themes");
+        document.fonts.load('500 12px "Space Grotesk Variable"').then(() => {
+          const dark = stage.querySelector("#themes-dark");
+          const light = dark.cloneNode(true);
+          light.id = "themes-light";
+          light.classList.add("theme-light");
+          dark.after(light);
+          // The twins overlap on purpose while the edge sweeps; each one is hidden while the other holds.
+          for (const el of light.querySelectorAll("*")) el.dataset.layoutAllowOverlap = "";
+
+          // A diagonal edge (top leads by S) sweeps left to right; the light twin shows between a and b.
+          const { width, height } = getComputedStyle(dark); // pre-zoom px, as clip-path uses them
+          const [W, H] = [parseFloat(width), parseFloat(height)];
+          const S = 160;
+          const M = 90; // margin that keeps the window's shadow inside the clip
+          const band = (a, b) =>
+            `polygon(${a}px ${-M}px, ${b}px ${-M}px, ${b - S}px ${H + M}px, ${a - S}px ${H + M}px)`;
+          const off = -M;
+          const past = W + M + S;
+
+          const tl = gsap.timeline({ paused: true });
+          tl.set(light, { autoAlpha: 0, clipPath: band(off, off) }, 0);
+
+          // Dark -> light -> dark. The covered twin is hidden while the other one holds.
+          tl.set(light, { autoAlpha: 1 }, 0.7);
+          tl.to(light, { clipPath: band(off, past), duration: 0.75, ease: "power2.inOut" }, 0.7);
+          tl.set(dark, { autoAlpha: 0 }, 1.45);
+          tl.set(dark, { autoAlpha: 1 }, 2.45);
+          tl.to(light, { clipPath: band(past, past), duration: 0.75, ease: "power2.inOut" }, 2.45);
+          tl.set(light, { autoAlpha: 0 }, 3.2);
+
+          // Used -> remaining and back: the numbers roll, the bars stay (they always show usage).
+          const cells = dark.querySelectorAll(".roll");
+          TV.roll(tl, cells, 3.7, false, 0.012);
+          TV.roll(tl, cells, 5.4, true, 0.012);
+
+          window.__timelines["themes"] = tl;
+        });
+      })();
+    </script>
+  </body>
+</html>

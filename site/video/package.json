@@ -1,0 +1,10 @@
+{
+  "name": "video",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx --yes hyperframes@0.8.78 preview --port 3002",
+    "check": "npx --yes hyperframes@0.8.78 check",
+    "render": "./build.sh"
+  }
+}

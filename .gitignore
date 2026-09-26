@@ -6,3 +6,5 @@ dist/
 *.log
 .claude/worktrees/
 .astro/
+site/video/renders/
+site/video/snapshots/

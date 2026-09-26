@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1600, height=1000" />
+    <title>Trayci clips (QA reel)</title>
+    <!-- QA reel only: plays the three clips back to back for `check`, `snapshot` and Studio.
+         The shipped videos render each clip on its own: build.sh (render -c compositions/<clip>.html). -->
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/MotionPathPlugin.min.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #000;
+      }
+      #reel {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      #reel > div {
+        position: absolute;
+      }
+      #el-detail,
+      #el-themes {
+        left: 200px;
+        top: 50px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="reel" data-composition-id="reel" data-start="0" data-duration="21.9" data-width="1600" data-height="1000">
+      <div
+        id="el-hero"
+        data-composition-id="hero"
+        data-composition-src="compositions/hero.html"
+        data-start="0"
+        data-duration="8.8"
+        data-track-index="1"
+        data-width="1600"
+        data-height="1000"
+      ></div>
+      <div
+        id="el-detail"
+        data-composition-id="detail"
+        data-composition-src="compositions/detail.html"
+        data-start="8.8"
+        data-duration="6.5"
+        data-track-index="1"
+        data-width="1200"
+        data-height="900"
+      ></div>
+      <div
+        id="el-themes"
+        data-composition-id="themes"
+        data-composition-src="compositions/themes.html"
+        data-start="15.3"
+        data-duration="6.6"
+        data-track-index="1"
+        data-width="1200"
+        data-height="900"
+      ></div>
+    </div>
+    <script>
+      window.__timelines["reel"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>
