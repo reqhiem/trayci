@@ -1,2 +1,5 @@
 .claude/
 pnpm-lock.yaml
+site/dist/
+site/.astro/
+site/video/
