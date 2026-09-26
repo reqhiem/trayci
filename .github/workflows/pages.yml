@@ -1,6 +1,10 @@
 name: Pages
 
 on:
+  pull_request:
+    paths:
+      - "site/**"
+      - ".github/workflows/pages.yml"
   push:
     branches: [main]
     paths:
@@ -15,20 +19,11 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: false
 
 jobs:
-  deploy:
+  build:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v6
       - uses: withastro/action@v6
@@ -37,5 +32,21 @@ jobs:
           node-version: 22
         env:
           GITHUB_TOKEN: ${{ github.token }}
+
+  # Pull requests only build: the github-pages environment deploys from main alone.
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v5
