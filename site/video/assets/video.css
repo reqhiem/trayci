@@ -1,0 +1,115 @@
+/* Stage styles shared by the three clips. The popover itself is styled only by app.css (a copy
+   of src/renderer/src/styles.css, see build.sh); nothing here restyles the app's own UI. */
+@font-face {
+  font-family: "Space Grotesk Variable";
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: block;
+  src: url("space-grotesk-latin-wght-normal.woff2") format("woff2");
+}
+
+/* Every move is on the seekable GSAP timeline, so the app's own CSS transitions must not run. */
+.stage *,
+.stage *::before,
+.stage *::after {
+  transition: none !important;
+  animation: none !important;
+}
+
+.stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: "Space Grotesk Variable", sans-serif;
+  background:
+    radial-gradient(60% 70% at 88% 108%, rgba(255, 90, 54, 0.13), transparent 70%),
+    radial-gradient(55% 60% at 4% -8%, rgba(125, 167, 255, 0.08), transparent 70%),
+    #0b0f14;
+}
+
+/* The popover window: .pop is moved by GSAP, .zoom magnifies (never both on one node). */
+.pop {
+  position: absolute;
+}
+.zoom {
+  display: grid;
+}
+.window {
+  grid-area: 1 / 1;
+  width: 359px; /* 360 minus the master's own right border, which the window edge stands in for */
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--ink);
+  color: var(--paper);
+  box-shadow:
+    0 0 0 1px var(--line),
+    0 18px 50px rgba(0, 0, 0, 0.55),
+    0 3px 10px rgba(0, 0, 0, 0.35);
+}
+.window main {
+  width: 680px;
+}
+/* App.tsx sizes the window from the master column alone; the pane scrolls inside it. */
+.window .provider-detail {
+  contain: size;
+}
+.theme-light {
+  color-scheme: light;
+}
+
+/* A value that changes in place: both states share one cell, the second starts hidden. */
+.roll {
+  display: inline-grid;
+  clip-path: inset(0 -6px);
+}
+.roll > * {
+  grid-area: 1 / 1;
+}
+.roll > :last-child {
+  visibility: hidden;
+}
+
+/* Compact mode's value, laid over the detailed row where App.tsx would render it. */
+.provider-summary {
+  position: relative;
+}
+.compact-overlay {
+  position: absolute;
+  right: 14px;
+  visibility: hidden;
+}
+.inline-metrics {
+  overflow: hidden;
+}
+
+.cursor {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 10;
+  width: 22px;
+  height: 33px;
+  margin: -1.4px 0 0 -1.4px; /* the arrow's tip sits on the element's origin */
+  transform-origin: 1.4px 1.4px;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.5));
+}
+.ring {
+  position: absolute;
+  left: -22px;
+  top: -22px;
+  z-index: 9;
+  width: 44px;
+  height: 44px;
+  border: 2px solid rgba(246, 244, 239, 0.7);
+  border-radius: 50%;
+  opacity: 0;
+}
+.caption {
+  position: absolute;
+  margin: 0;
+  color: #f6f4ef;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  white-space: nowrap;
+}

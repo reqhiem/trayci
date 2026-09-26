@@ -1,0 +1,506 @@
+---
+import "@fontsource-variable/space-grotesk";
+import "../styles/site.css";
+import { readFileSync } from "node:fs";
+
+const base = import.meta.env.BASE_URL.replace(/\/?$/, "/");
+const canonical = new URL(base, Astro.site).href;
+const ogImage = new URL(`${base}og.png`, Astro.site).href;
+const repo = "https://github.com/reqhiem/trayci";
+const latest = `${repo}/releases/latest`;
+
+const title = "Trayci: Claude Code, Codex, and Antigravity usage in your tray";
+const description =
+  "Trayci is a local-first tray app for Linux and Windows that shows your Claude Code, Codex, and Antigravity quota windows and when they reset. It reuses each CLI's sign-in and never stores credentials.";
+
+// Resolved at build time. Offline, rate-limited, or an odd payload: every link keeps the releases page.
+const links = { appimage: latest, deb: latest, exe: latest, notes: latest };
+let version = "";
+try {
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github+json",
+    "User-Agent": "trayci-site",
+  };
+  if (process.env.GITHUB_TOKEN)
+    headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  const response = await fetch(
+    "https://api.github.com/repos/reqhiem/trayci/releases/latest",
+    { headers, signal: AbortSignal.timeout(10_000) },
+  );
+  if (!response.ok) throw new Error(`GitHub API answered ${response.status}`);
+  const release = await response.json();
+  const asset = (suffix: string): string =>
+    release.assets.find((a: { name: string }) => a.name.endsWith(suffix))
+      ?.browser_download_url ?? latest;
+  links.appimage = asset("_amd64.AppImage");
+  links.deb = asset("_amd64.deb");
+  links.exe = asset("_x64-setup.exe");
+  links.notes = release.html_url ?? latest;
+  version = String(release.tag_name ?? "");
+} catch (error) {
+  console.warn(`Release lookup failed, linking to ${latest}:`, error);
+}
+const versionLabel = version
+  ? `Version ${version.replace(/^v/, "")}`
+  : "The latest release";
+
+// Screens are @2x captures, so half the PNG's pixel size is the popover's real size.
+const screen = (name: string, caption: string, alt: string) => {
+  const png = readFileSync(`public/screens/${name}.png`);
+  return {
+    src: `${base}screens/${name}.png`,
+    width: Math.round(png.readUInt32BE(16) / 2),
+    height: Math.round(png.readUInt32BE(20) / 2),
+    caption,
+    alt,
+  };
+};
+const countdowns = screen(
+  "usage-detail-dark",
+  "Detail pane",
+  "Detail pane listing each usage window with a bar, the percentage used, and a reset countdown",
+);
+const screens = [
+  screen(
+    "usage-detailed-dark",
+    "Detailed view",
+    "Detailed view in the dark theme: Antigravity, Claude Code, and Codex rows, each with a bar per usage window",
+  ),
+  countdowns,
+  screen(
+    "settings-dark",
+    "Settings",
+    "Settings panel with general, appearance, notification, provider, and window options",
+  ),
+  screen(
+    "usage-compact-dark",
+    "Compact view",
+    "Compact view in the dark theme: one row per provider with its tightest window's percentage and reset countdown",
+  ),
+  screen(
+    "usage-detailed-light",
+    "Detailed view, light theme",
+    "Detailed view in the light theme",
+  ),
+  screen(
+    "usage-detail-light",
+    "Detail pane, light theme",
+    "Detail pane in the light theme",
+  ),
+];
+
+// The glyphs the app draws in each provider row (src/renderer/src/App.tsx), not official logos.
+const providers = [
+  {
+    id: "claude",
+    name: "Claude Code",
+    paths: [
+      "M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4M8.4 3.8l7.2 16.4M20.2 8.4 3.8 15.6M15.6 3.8 8.4 20.2M20.2 15.6 3.8 8.4",
+    ],
+  },
+  {
+    id: "codex",
+    name: "Codex",
+    paths: [
+      "M12 3.1a4.4 4.4 0 0 1 4 2.5 4.4 4.4 0 0 1 3.8 6.6 4.4 4.4 0 0 1-3.7 6.3 4.4 4.4 0 0 1-7.9-.1 4.4 4.4 0 0 1-3.9-6.3 4.4 4.4 0 0 1 3.8-6.5A4.4 4.4 0 0 1 12 3.1Z",
+      "m8.1 5.6 7.8 4.5v8.4M4.3 12.1l7.7-4.5 7.8 4.6M8.2 18.4V9.5l7.7-3.9M16.1 18.5 8.2 14l-3.9 2.2M12 20.9v-9l-7.7-4.4",
+    ],
+  },
+  {
+    id: "antigravity",
+    name: "Antigravity",
+    paths: [
+      "M12 2.8c.8 5.1 4.1 8.4 9.2 9.2-5.1.8-8.4 4.1-9.2 9.2-.8-5.1-4.1-8.4-9.2-9.2 5.1-.8 8.4-4.1 9.2-9.2Z",
+      "M18.2 3.2c.2 1.5 1.1 2.4 2.6 2.6-1.5.2-2.4 1.1-2.6 2.6-.2-1.5-1.1-2.4-2.6-2.6 1.5-.2 2.4-1.1 2.6-2.6Z",
+    ],
+  },
+];
+
+// The notification switches from the app's settings, each drawn at the level where it fires.
+const alerts = [
+  { label: "Quota reaches 50%", used: 50, level: "medium" },
+  { label: "Quota reaches 85%", used: 85, level: "high" },
+  { label: "Quota reaches 90%", used: 90, level: "critical" },
+  { label: "Quota reset completes", used: 0, level: "low" },
+];
+
+const clips = {
+  hero: "Trayci's popover showing Antigravity, Claude Code, and Codex usage with reset countdowns",
+  detail:
+    "Hovering a provider opens its windows in a side pane, and clicking pins the pane open",
+  themes:
+    "Trayci switching from the dark to the light theme and back, then from used to remaining percentages",
+};
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <meta name="theme-color" content="#0b0f14" />
+    <link rel="icon" href={`${base}brand/trayci.svg`} type="image/svg+xml" />
+    <link rel="apple-touch-icon" href={`${base}brand/apple-touch-icon.png`} />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Trayci" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="Trayci's tray popover with Claude Code, Codex, and Antigravity usage"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+  </head>
+  <body>
+    <header class="wrap nav">
+      <a class="brand" href={base}>
+        <img src={`${base}brand/trayci.svg`} width="28" height="28" alt="" />
+        Trayci
+      </a>
+      <nav aria-label="Primary">
+        <ul>
+          <li><a href="#features">Features</a></li>
+          <li><a href="#install">Install</a></li>
+          <li><a href={repo}>GitHub</a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <main>
+      <section class="wrap hero">
+        <h1>
+          <span>Claude Code, Codex,</span>
+          <span>and Antigravity usage,</span>
+          <span>one click away.</span>
+        </h1>
+        <p class="lead">
+          A local-first tray app for Linux and Windows that shows every quota
+          window and when it resets, using the sign-in your CLIs already have.
+        </p>
+        <div class="actions">
+          <a class="button primary" href={links.appimage}>
+            Download for Linux <small>AppImage, amd64</small>
+          </a>
+          <a class="button primary" href={links.exe}>
+            Download for Windows <small>Installer, x64</small>
+          </a>
+          <a class="button ghost" href={repo}>View on GitHub</a>
+        </div>
+        <p class="release">
+          {
+            version && (
+              <a
+                class="tag"
+                href={links.notes}
+                aria-label={`${version} release notes`}
+              >
+                {version}
+              </a>
+            )
+          }
+          Also available as <a href={links.deb}>a .deb for Debian and Ubuntu</a>.
+        </p>
+        <video
+          class="frame"
+          autoplay
+          muted
+          loop
+          playsinline
+          preload="metadata"
+          poster={`${base}media/hero.jpg`}
+          width="1600"
+          height="1000"
+          aria-label={clips.hero}
+        >
+          <source
+            src={`${base}media/hero.mp4`}
+            type="video/mp4"
+            media="(prefers-reduced-motion: no-preference)"
+          />
+        </video>
+      </section>
+
+      <section class="wrap providers" aria-label="Supported providers">
+        <ul>
+          {
+            providers.map((provider) => (
+              <li>
+                <span class={`glyph ${provider.id}`} aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    {provider.paths.map((d) => (
+                      <path d={d} />
+                    ))}
+                  </svg>
+                </span>
+                {provider.name}
+              </li>
+            ))
+          }
+        </ul>
+        <p>Not affiliated with Anthropic, OpenAI, or Google.</p>
+      </section>
+
+      <section id="features" class="section">
+        <div class="wrap">
+          <h2>Every limit at a glance</h2>
+          <p class="intro">
+            Trayci refreshes on the schedule you pick, from every 5 minutes to
+            every hour, and again when your computer wakes up.
+          </p>
+          <div class="features">
+            <div class="feature">
+              <h3>Detailed or compact</h3>
+              <p>
+                Detailed rows give every window its own bar. Compact rows show
+                only the tightest one and its countdown. Hover a provider to see
+                all its windows, and click to pin them.
+              </p>
+              <video
+                class="frame media"
+                autoplay
+                muted
+                loop
+                playsinline
+                preload="metadata"
+                poster={`${base}media/detail.jpg`}
+                width="1200"
+                height="900"
+                aria-label={clips.detail}
+              >
+                <source
+                  src={`${base}media/detail.mp4`}
+                  type="video/mp4"
+                  media="(prefers-reduced-motion: no-preference)"
+                />
+              </video>
+            </div>
+            <div class="feature">
+              <h3>Know when it resets</h3>
+              <p>
+                Every window counts down to its reset, including all four of
+                Antigravity's: 5-hour and weekly, for Gemini and for Claude/GPT
+                models.
+              </p>
+              <div class="frame media stage">
+                <img
+                  src={countdowns.src}
+                  width={countdowns.width}
+                  height={countdowns.height}
+                  alt={countdowns.alt}
+                  loading="lazy"
+                  decoding="async"
+                />
+              </div>
+            </div>
+            <div class="feature">
+              <h3>Notifications you choose</h3>
+              <p>
+                Opt in to an alert when a window reaches 50%, 85%, or 90%, the
+                points where its bar turns yellow, orange, and red, and another
+                when it resets.
+              </p>
+              <div class="frame media stage">
+                <div
+                  class="alerts"
+                  role="img"
+                  aria-label="Usage bars at 50%, 85%, and 90% in yellow, orange, and red, and an empty bar after a reset"
+                >
+                  {
+                    alerts.map((alert) => (
+                      <div class="alert">
+                        <span>{alert.label}</span>
+                        <span class={`bar ${alert.level}`}>
+                          <span style={`width: ${alert.used}%`} />
+                        </span>
+                        <strong>{alert.used}%</strong>
+                      </div>
+                    ))
+                  }
+                </div>
+              </div>
+            </div>
+            <div class="feature">
+              <h3>Light, dark, or Auto</h3>
+              <p>
+                Follow your system's theme or pick one, show used or remaining
+                percentages, and choose from four text sizes, S to XL.
+              </p>
+              <video
+                class="frame media"
+                autoplay
+                muted
+                loop
+                playsinline
+                preload="metadata"
+                poster={`${base}media/themes.jpg`}
+                width="1200"
+                height="900"
+                aria-label={clips.themes}
+              >
+                <source
+                  src={`${base}media/themes.mp4`}
+                  type="video/mp4"
+                  media="(prefers-reduced-motion: no-preference)"
+                />
+              </video>
+            </div>
+          </div>
+          <div class="notes">
+            <div>
+              <h3>Local-first, credential-free</h3>
+              <p>
+                Trayci reads usage with the sign-in each CLI already has and
+                never stores credentials.
+                <a href="#privacy">How it handles your sign-ins</a>
+              </p>
+            </div>
+            <div>
+              <h3>Drag it anywhere</h3>
+              <p>
+                Move the popover by its title bar. On X11 it opens there next
+                time; on Wayland it opens wherever the compositor puts it.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="screens" class="section">
+        <div class="wrap">
+          <h2>The popover at actual size</h2>
+        </div>
+        <div class="strip" tabindex="0" role="region" aria-label="Screenshots">
+          {
+            screens.map((shot) => (
+              <figure>
+                <img
+                  src={shot.src}
+                  width={shot.width}
+                  height={shot.height}
+                  alt={shot.alt}
+                  loading="lazy"
+                  decoding="async"
+                />
+                <figcaption>{shot.caption}</figcaption>
+              </figure>
+            ))
+          }
+        </div>
+      </section>
+
+      <section id="privacy" class="section">
+        <div class="wrap split">
+          <h2>Nothing new to sign in to</h2>
+          <div class="facts">
+            <div>
+              <h3>Reuses the sign-in you have</h3>
+              <p>
+                Trayci reads usage with the sign-in that Claude Code, Codex, and
+                the agy CLI already have. There's no Trayci account to create.
+              </p>
+            </div>
+            <div>
+              <h3>Never stores credentials</h3>
+              <p>
+                Trayci doesn't save tokens or passwords. Each CLI keeps managing
+                its own sign-in.
+              </p>
+            </div>
+            <div>
+              <h3>A cache with no secrets</h3>
+              <p>
+                On Linux, settings and a credential-free usage cache live in
+                <code>~/.config/trayci</code>, or
+                <code>$XDG_CONFIG_HOME/trayci</code> when that's set.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="install" class="section">
+        <div class="wrap">
+          <h2>Install Trayci</h2>
+          <p class="intro">
+            {versionLabel}, from <a href={`${repo}/releases`}>GitHub Releases</a>.
+          </p>
+          <div class="installs">
+            <div class="install">
+              <h3>AppImage <small>Linux amd64</small></h3>
+              <pre><code>chmod +x Trayci_*_amd64.AppImage && ./Trayci_*_amd64.AppImage</code></pre>
+              <a class="button ghost" href={links.appimage}>Download AppImage</a>
+            </div>
+            <div class="install">
+              <h3>Debian and Ubuntu <small>Linux amd64</small></h3>
+              <pre><code>sudo apt install ./Trayci_*_amd64.deb</code></pre>
+              <a class="button ghost" href={links.deb}>Download .deb</a>
+            </div>
+            <div class="install">
+              <h3>Windows <small>x64</small></h3>
+              <p>Run <code>Trayci_*_x64-setup.exe</code>.</p>
+              <a class="button ghost" href={links.exe}>Download installer</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="compatibility" class="section">
+        <div class="wrap split">
+          <h2>Where it runs</h2>
+          <div>
+            <dl class="compat">
+              <div>
+                <dt>Linux amd64 on X11</dt>
+                <dd>
+                  AppImage or .deb. The popover opens where you last dragged it.
+                </dd>
+              </div>
+              <div>
+                <dt>Linux amd64 on Wayland</dt>
+                <dd>
+                  AppImage or .deb. You can drag the popover, but it opens
+                  wherever the compositor puts it. Forcing XWayland with
+                  <code>GDK_BACKEND=x11</code> doesn't help: the popover never
+                  gets input focus there.
+                </dd>
+              </div>
+              <div>
+                <dt>Windows x64</dt>
+                <dd>Installer (.exe). Not yet measured in the compatibility matrix.</dd>
+              </div>
+              <div>
+                <dt>Every platform</dt>
+                <dd>
+                  At least one provider CLI you're signed in to: Claude Code,
+                  Codex, or agy for Antigravity.
+                </dd>
+              </div>
+            </dl>
+            <p class="more">
+              <a href={`${repo}/blob/main/COMPATIBILITY.md`}>Full compatibility notes</a>
+            </p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="wrap footer">
+      <a class="brand" href={base}>
+        <img src={`${base}brand/trayci.svg`} width="24" height="24" alt="" />
+        Trayci
+      </a>
+      <ul>
+        <li><a href={repo}>GitHub</a></li>
+        <li><a href={`${repo}/releases`}>Releases</a></li>
+        <li><a href={`${repo}/blob/main/LICENSE`}>MIT License</a></li>
+      </ul>
+      <p>Not affiliated with Anthropic, OpenAI, or Google.</p>
+    </footer>
+  </body>
+</html>

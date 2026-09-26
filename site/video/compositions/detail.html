@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1200, height=900" />
+    <title>Trayci detail</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/MotionPathPlugin.min.js"></script>
+    <link rel="stylesheet" href="assets/app.css" />
+    <link rel="stylesheet" href="assets/video.css" />
+    <script src="assets/video.js"></script>
+    <style>
+      #detail-pop {
+        left: 56px;
+        top: 77px;
+      }
+      #detail .pin-note {
+        visibility: hidden;
+      }
+      #detail .caption {
+        left: 56px;
+        top: 779px;
+        font-size: 34px;
+      }
+      /* A key being pressed: Esc unpins (App.tsx), which a cursor alone cannot show.
+         A 1u keycap: square, a darker skirt along its bottom edge, the legend on the top face. */
+      #detail-key {
+        position: absolute;
+        right: 56px;
+        top: 769px;
+        display: grid;
+        place-items: center;
+        width: 64px;
+        height: 64px;
+        padding-bottom: 5px;
+        border-radius: 11px;
+        color: #9aa0a8;
+        background: #161b22;
+        box-shadow:
+          inset 0 -5px 0 rgba(0, 0, 0, 0.42),
+          inset 0 1px 0 rgba(246, 244, 239, 0.07),
+          0 0 0 1px rgba(246, 244, 239, 0.14),
+          0 8px 18px rgba(0, 0, 0, 0.35);
+        font-size: 19px;
+        font-weight: 500;
+        line-height: 1;
+        visibility: hidden;
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="detail"
+      class="stage"
+      data-composition-id="detail"
+      data-start="0"
+      data-duration="6.5"
+      data-width="1200"
+      data-height="900"
+    >
+      <div class="pop" id="detail-pop">
+        <div class="zoom" style="zoom: 1.6">
+          <div class="window" id="detail-window"><main class="has-detail" data-layout-allow-overflow><section class="master"><header class="topbar" data-tauri-drag-region="deep"><h1>Usage</h1><div class="header-actions"><span>all agents</span><button class="icon-button" type="button" aria-label="Refresh usage"><span class="" aria-hidden="true">↻</span></button><button class="icon-button settings-button" type="button" aria-label="Settings">···</button></div></header><div class="density" aria-label="Information density"><button type="button" aria-pressed="true">Detailed</button><button type="button" aria-pressed="false">Compact</button></div><div class="provider-list" aria-live="polite"><button class="provider-row provider-ok" type="button" aria-busy="false" aria-expanded="false"><div class="provider-summary"><span class="provider-icon antigravity-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2.8c.8 5.1 4.1 8.4 9.2 9.2-5.1.8-8.4 4.1-9.2 9.2-.8-5.1-4.1-8.4-9.2-9.2 5.1-.8 8.4-4.1 9.2-9.2Z"></path><path d="M18.2 3.2c.2 1.5 1.1 2.4 2.6 2.6-1.5.2-2.4 1.1-2.6 2.6-.2-1.5-1.1-2.4-2.6-2.6 1.5-.2 2.4-1.1 2.6-2.6Z"></path></svg></span><strong>Antigravity</strong><span class="reset-summary">Resets in 47m</span><span class="chevron" aria-hidden="true"></span></div><div class="inline-metrics inline-metrics-grid"><div class="metric metric-dense"><div class="metric-copy"><strong>Gem 5h</strong></div><div class="metric-line"><div class="progress progress-high" role="progressbar" aria-label="Gemini 5h usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="88"><span style="width: 88%;"></span></div><strong>88%</strong></div></div><div class="metric metric-dense"><div class="metric-copy"><strong>Gem wk</strong></div><div class="metric-line"><div class="progress progress-low" role="progressbar" aria-label="Gemini Weekly usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="36"><span style="width: 36%;"></span></div><strong>36%</strong></div></div><div class="metric metric-dense"><div class="metric-copy"><strong>C/G 5h</strong></div><div class="metric-line"><div class="progress progress-critical" role="progressbar" aria-label="Claude/GPT 5h usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="93"><span style="width: 93%;"></span></div><strong>93%</strong></div></div><div class="metric metric-dense"><div class="metric-copy"><strong>C/G wk</strong></div><div class="metric-line"><div class="progress progress-medium" role="progressbar" aria-label="Claude/GPT Weekly usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="51"><span style="width: 51%;"></span></div><strong>51%</strong></div></div></div></button><button class="provider-row provider-ok" type="button" aria-busy="false" aria-expanded="false"><div class="provider-summary"><span class="provider-icon claude-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4M8.4 3.8l7.2 16.4M20.2 8.4 3.8 15.6M15.6 3.8 8.4 20.2M20.2 15.6 3.8 8.4"></path></svg></span><strong>Claude</strong><span class="reset-summary">Resets in 3d 6h</span><span class="chevron" aria-hidden="true"></span></div><div class="inline-metrics inline-metrics-grid"><div class="metric metric-dense"><div class="metric-copy"><strong>5h</strong></div><div class="metric-line"><div class="progress progress-low" role="progressbar" aria-label="5h usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="42"><span style="width: 42%;"></span></div><strong>42%</strong></div></div><div class="metric metric-dense"><div class="metric-copy"><strong>wk</strong></div><div class="metric-line"><div class="progress progress-medium" role="progressbar" aria-label="Weekly usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="68"><span style="width: 68%;"></span></div><strong>68%</strong></div></div><div class="metric metric-dense"><div class="metric-copy"><strong>Fable</strong></div><div class="metric-line"><div class="progress progress-low" role="progressbar" aria-label="Fable usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="31"><span style="width: 31%;"></span></div><strong>31%</strong></div></div></div></button><button class="provider-row provider-ok" type="button" aria-busy="false" aria-expanded="false"><div class="provider-summary"><span class="provider-icon codex-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3.1a4.4 4.4 0 0 1 4 2.5 4.4 4.4 0 0 1 3.8 6.6 4.4 4.4 0 0 1-3.7 6.3 4.4 4.4 0 0 1-7.9-.1 4.4 4.4 0 0 1-3.9-6.3 4.4 4.4 0 0 1 3.8-6.5A4.4 4.4 0 0 1 12 3.1Z"></path><path d="m8.1 5.6 7.8 4.5v8.4M4.3 12.1l7.7-4.5 7.8 4.6M8.2 18.4V9.5l7.7-3.9M16.1 18.5 8.2 14l-3.9 2.2M12 20.9v-9l-7.7-4.4"></path></svg></span><strong>Codex</strong><span class="reset-summary">Resets in 5d 2h</span><span class="chevron" aria-hidden="true"></span></div><div class="inline-metrics"><div class="metric metric-dense"><div class="metric-copy"><strong>5h</strong></div><div class="metric-line"><div class="progress progress-low" role="progressbar" aria-label="5h usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="12"><span style="width: 12%;"></span></div><strong>12%</strong></div></div><div class="metric metric-dense"><div class="metric-copy"><strong>wk</strong></div><div class="metric-line"><div class="progress progress-medium" role="progressbar" aria-label="Weekly usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="57"><span style="width: 57%;"></span></div><strong>57%</strong></div></div></div></button></div></section><aside class="provider-detail" aria-label="Codex details"><header data-tauri-drag-region="deep"><div class="detail-title"><span class="provider-icon codex-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3.1a4.4 4.4 0 0 1 4 2.5 4.4 4.4 0 0 1 3.8 6.6 4.4 4.4 0 0 1-3.7 6.3 4.4 4.4 0 0 1-7.9-.1 4.4 4.4 0 0 1-3.9-6.3 4.4 4.4 0 0 1 3.8-6.5A4.4 4.4 0 0 1 12 3.1Z"></path><path d="m8.1 5.6 7.8 4.5v8.4M4.3 12.1l7.7-4.5 7.8 4.6M8.2 18.4V9.5l7.7-3.9M16.1 18.5 8.2 14l-3.9 2.2M12 20.9v-9l-7.7-4.4"></path></svg></span><strong>Codex</strong><span class="plan">plus</span></div><span>Updated just now · via RPC<span class="pin-note"> · pinned</span></span></header><div class="detail-metrics"><div class="metric"><div class="metric-copy"><strong>5h</strong></div><div class="metric-line"><div class="progress progress-low" role="progressbar" aria-label="5h usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="12"><span style="width: 12%;"></span></div><strong>12%</strong></div><div class="metric-meta"><span>12% used</span><span>Resets in 3h 41m</span></div></div><div class="metric"><div class="metric-copy"><strong>Weekly</strong></div><div class="metric-line"><div class="progress progress-medium" role="progressbar" aria-label="Weekly usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="57"><span style="width: 57%;"></span></div><strong>57%</strong></div><div class="metric-meta"><span>57% used</span><span>Resets in 5d 2h</span></div></div></div></aside></main></div>
+        </div>
+      </div>
+
+      <p class="caption">Hover to peek, click to pin.</p>
+      <span id="detail-key">esc</span>
+      <div class="ring" id="detail-ring"></div>
+      <svg class="cursor" id="detail-cursor" viewBox="0 0 16 24" aria-hidden="true">
+        <path
+          d="M1 1v19.2l4.6-4.4 3.1 7.2 3.1-1.3-3.1-7.1h6.4z"
+          fill="#f6f4ef"
+          stroke="#0b0f14"
+          stroke-width="1.3"
+          stroke-linejoin="round"
+        />
+      </svg>
+    </div>
+
+    <script>
+      (() => {
+        const stage = document.getElementById("detail");
+        const $ = (s) => stage.querySelector(s);
+        gsap.registerPlugin(MotionPathPlugin);
+
+        document.fonts.load('500 12px "Space Grotesk Variable"').then(() => {
+          const cursor = $("#detail-cursor");
+          const ring = $("#detail-ring");
+          const win = $("#detail-window");
+          const pane = $(".provider-detail");
+          const note = $(".pin-note");
+          const key = $("#detail-key");
+          const codex = stage.querySelectorAll(".provider-row")[2];
+          const clear = "rgba(246, 244, 239, 0)";
+          const tint = getComputedStyle(win).getPropertyValue("--tint").trim();
+
+          const R = { x: 900, y: 790 }; // cursor at rest, start and end of the loop
+          const X = TV.at(stage, codex, 0.62, 0.5);
+          const Y = { x: 700, y: 812 }; // idling below the popover while it stays pinned
+
+          const tl = gsap.timeline({ paused: true });
+          tl.set(cursor, { x: R.x, y: R.y }, 0);
+          tl.set(pane, { autoAlpha: 0 }, 0);
+
+          // Hover Codex (the cursor comes in over its row's edge): the pane peeks open.
+          TV.glide(tl, cursor, [R, X], 0.4, 0.8);
+          tl.fromTo(
+            codex,
+            { backgroundColor: clear },
+            { backgroundColor: tint, duration: 0.12, ease: "none", immediateRender: false },
+            0.83,
+          );
+          tl.to(win, { width: 680, duration: 0.32, ease: "power2.out" }, 0.83);
+          tl.fromTo(
+            pane,
+            { autoAlpha: 0, x: -14 },
+            { autoAlpha: 1, x: 0, duration: 0.3, ease: "power2.out", immediateRender: false },
+            0.85,
+          );
+
+          // Click to pin; the pane stays after the cursor leaves the popover.
+          TV.click(tl, cursor, ring, X, 1.9);
+          tl.set(codex, { attr: { "aria-expanded": "true" } }, 1.95);
+          tl.to(note, { autoAlpha: 1, duration: 0.15, ease: "none" }, 1.95);
+          TV.glide(tl, cursor, [X, Y], 2.35, 0.8);
+
+          // Esc unpins: nothing is hovered any more, so the pane closes.
+          tl.to(key, { autoAlpha: 1, duration: 0.2, ease: "power2.out" }, 3.95);
+          tl.to(key, { y: 2, color: "#f6f4ef", duration: 0.07, ease: "power2.in", yoyo: true, repeat: 1 }, 4.25);
+          tl.set(codex, { attr: { "aria-expanded": "false" } }, 4.3);
+          tl.to([note, pane], { autoAlpha: 0, duration: 0.14, ease: "none" }, 4.3);
+          tl.to(codex, { backgroundColor: clear, duration: 0.12, ease: "none" }, 4.3);
+          tl.to(win, { width: 359, duration: 0.32, ease: "power2.inOut" }, 4.3);
+          tl.to(key, { autoAlpha: 0, duration: 0.2, ease: "power2.in" }, 4.85);
+          TV.glide(tl, cursor, [Y, R], 4.9, 1.0);
+
+          window.__timelines["detail"] = tl;
+        });
+      })();
+    </script>
+  </body>
+</html>

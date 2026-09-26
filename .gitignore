@@ -5,3 +5,6 @@ dist/
 /src-tauri/target/
 *.log
 .claude/worktrees/
+.astro/
+site/video/renders/
+site/video/snapshots/
