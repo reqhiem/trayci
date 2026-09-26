@@ -47,7 +47,6 @@ h1,
 h2,
 h3,
 p,
-figure,
 dl,
 dd,
 pre {
@@ -500,43 +499,6 @@ pre code {
   .stage {
     aspect-ratio: 4 / 3;
   }
-}
-
-/* Screens: a strip that starts on the page's left edge and scrolls inside itself. */
-
-.strip {
-  display: flex;
-  align-items: flex-start;
-  gap: 2rem;
-  margin-top: clamp(2.5rem, 2rem + 2vw, 3.5rem);
-  padding: 0.5rem max(1rem, (100% - 75rem) / 2) 1.5rem;
-  overflow-x: auto;
-  scroll-padding-inline: max(1rem, (100% - 75rem) / 2);
-  scroll-snap-type: x mandatory;
-  scrollbar-color: var(--tint) transparent;
-  scrollbar-width: thin;
-}
-
-.strip:focus-visible {
-  outline-offset: -2px;
-}
-
-.strip figure {
-  flex: none;
-  scroll-snap-align: start;
-}
-
-.strip img {
-  box-sizing: content-box;
-  max-width: none;
-  border: 1px solid var(--line);
-  border-radius: 0.625rem;
-}
-
-.strip figcaption {
-  margin-top: 0.875rem;
-  color: var(--muted);
-  font-size: 0.9375rem;
 }
 
 /* Privacy and compatibility: heading on the left, facts on the right. */

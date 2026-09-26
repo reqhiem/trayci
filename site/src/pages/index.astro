@@ -45,49 +45,19 @@ const versionLabel = version
   : "The latest release";
 
 // Screens are @2x captures, so half the PNG's pixel size is the popover's real size.
-const screen = (name: string, caption: string, alt: string) => {
+const screen = (name: string, alt: string) => {
   const png = readFileSync(`public/screens/${name}.png`);
   return {
     src: `${base}screens/${name}.png`,
     width: Math.round(png.readUInt32BE(16) / 2),
     height: Math.round(png.readUInt32BE(20) / 2),
-    caption,
     alt,
   };
 };
 const countdowns = screen(
   "usage-detail-dark",
-  "Detail pane",
   "Detail pane listing each usage window with a bar, the percentage used, and a reset countdown",
 );
-const screens = [
-  screen(
-    "usage-detailed-dark",
-    "Detailed view",
-    "Detailed view in the dark theme: Antigravity, Claude Code, and Codex rows, each with a bar per usage window",
-  ),
-  countdowns,
-  screen(
-    "settings-dark",
-    "Settings",
-    "Settings panel with general, appearance, notification, provider, and window options",
-  ),
-  screen(
-    "usage-compact-dark",
-    "Compact view",
-    "Compact view in the dark theme: one row per provider with its tightest window's percentage and reset countdown",
-  ),
-  screen(
-    "usage-detailed-light",
-    "Detailed view, light theme",
-    "Detailed view in the light theme",
-  ),
-  screen(
-    "usage-detail-light",
-    "Detail pane, light theme",
-    "Detail pane in the light theme",
-  ),
-];
 
 // The glyphs the app draws in each provider row (src/renderer/src/App.tsx), not official logos.
 const providers = [
@@ -368,29 +338,6 @@ const clips = {
               </p>
             </div>
           </div>
-        </div>
-      </section>
-
-      <section id="screens" class="section">
-        <div class="wrap">
-          <h2>The popover at actual size</h2>
-        </div>
-        <div class="strip" tabindex="0" role="region" aria-label="Screenshots">
-          {
-            screens.map((shot) => (
-              <figure>
-                <img
-                  src={shot.src}
-                  width={shot.width}
-                  height={shot.height}
-                  alt={shot.alt}
-                  loading="lazy"
-                  decoding="async"
-                />
-                <figcaption>{shot.caption}</figcaption>
-              </figure>
-            ))
-          }
         </div>
       </section>
 
