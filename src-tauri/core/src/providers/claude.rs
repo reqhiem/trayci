@@ -197,7 +197,7 @@ async fn oauth(
     }
     if !response.status().is_success() {
         return Err(ProviderError::new(
-            ProviderErrorKind::Network,
+            failure_kind(response.status()),
             format!("Claude usage returned {}", response.status()),
         ));
     }
@@ -214,6 +214,25 @@ async fn oauth(
     } else {
         Ok(windows)
     }
+}
+
+/// A rejected token is one the CLI can refresh, and a server error may be gone by the time it has
+/// run. Any other client error is the server's final answer. `NotAuthenticated` never leaves
+/// `fetch_usage`, since the service would take it as definitive and drop the last good reading.
+fn failure_kind(status: reqwest::StatusCode) -> ProviderErrorKind {
+    match status.as_u16() {
+        401 | 403 => ProviderErrorKind::NotAuthenticated,
+        400..=499 => ProviderErrorKind::Unknown,
+        _ => ProviderErrorKind::Network,
+    }
+}
+
+/// What the CLI can get past; anything else is returned without spawning Claude Code.
+fn recoverable(kind: ProviderErrorKind) -> bool {
+    matches!(
+        kind,
+        ProviderErrorKind::NotAuthenticated | ProviderErrorKind::Network | ProviderErrorKind::Parse
+    )
 }
 
 pub fn parse_claude_usage(output: &str, now: u64) -> Vec<UsageWindow> {
@@ -276,15 +295,7 @@ impl UsageProvider for ClaudeProvider {
         if let Some(token) = &tried {
             match oauth(token, context).await {
                 Ok(windows) => return Ok(self.snapshot(windows, context.now, UsageSource::Oauth)),
-                // A 429 is the server's answer, and spawning Claude Code cannot change it.
-                Err(error)
-                    if matches!(
-                        error.kind,
-                        ProviderErrorKind::RateLimited | ProviderErrorKind::Aborted
-                    ) =>
-                {
-                    return Err(error)
-                }
+                Err(error) if !recoverable(error.kind) => return Err(error),
                 Err(_) => {}
             }
         }
@@ -333,5 +344,28 @@ impl UsageProvider for ClaudeProvider {
             }
         }
         cli.map(|windows| self.snapshot(windows, context.now, UsageSource::Cli))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_auth_and_server_failures_fall_back_to_the_cli() {
+        for (status, fallback) in [
+            (401, true),
+            (403, true),
+            (500, true),
+            (503, true),
+            (400, false),
+            (404, false),
+        ] {
+            let kind = failure_kind(reqwest::StatusCode::from_u16(status).unwrap());
+            assert_eq!(recoverable(kind), fallback, "{status}");
+        }
+        assert!(recoverable(ProviderErrorKind::Parse));
+        assert!(!recoverable(ProviderErrorKind::RateLimited));
+        assert!(!recoverable(ProviderErrorKind::Aborted));
     }
 }
