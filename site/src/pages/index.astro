@@ -2,6 +2,12 @@
 import "@fontsource-variable/space-grotesk";
 import "../styles/site.css";
 import { readFileSync } from "node:fs";
+import Antigravity from "../icons/antigravity.svg";
+import Claude from "../icons/claude.svg";
+import Codex from "../icons/codex.svg";
+import GitHub from "../icons/github.svg";
+import Linux from "../icons/linux.svg";
+import Windows from "../icons/windows.svg";
 
 const base = import.meta.env.BASE_URL.replace(/\/?$/, "/");
 const canonical = new URL(base, Astro.site).href;
@@ -59,33 +65,6 @@ const countdowns = screen(
   "Detail pane listing each usage window with a bar, the percentage used, and a reset countdown",
 );
 
-// The glyphs the app draws in each provider row (src/renderer/src/App.tsx), not official logos.
-const providers = [
-  {
-    id: "claude",
-    name: "Claude Code",
-    paths: [
-      "M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4M8.4 3.8l7.2 16.4M20.2 8.4 3.8 15.6M15.6 3.8 8.4 20.2M20.2 15.6 3.8 8.4",
-    ],
-  },
-  {
-    id: "codex",
-    name: "Codex",
-    paths: [
-      "M12 3.1a4.4 4.4 0 0 1 4 2.5 4.4 4.4 0 0 1 3.8 6.6 4.4 4.4 0 0 1-3.7 6.3 4.4 4.4 0 0 1-7.9-.1 4.4 4.4 0 0 1-3.9-6.3 4.4 4.4 0 0 1 3.8-6.5A4.4 4.4 0 0 1 12 3.1Z",
-      "m8.1 5.6 7.8 4.5v8.4M4.3 12.1l7.7-4.5 7.8 4.6M8.2 18.4V9.5l7.7-3.9M16.1 18.5 8.2 14l-3.9 2.2M12 20.9v-9l-7.7-4.4",
-    ],
-  },
-  {
-    id: "antigravity",
-    name: "Antigravity",
-    paths: [
-      "M12 2.8c.8 5.1 4.1 8.4 9.2 9.2-5.1.8-8.4 4.1-9.2 9.2-.8-5.1-4.1-8.4-9.2-9.2 5.1-.8 8.4-4.1 9.2-9.2Z",
-      "M18.2 3.2c.2 1.5 1.1 2.4 2.6 2.6-1.5.2-2.4 1.1-2.6 2.6-.2-1.5-1.1-2.4-2.6-2.6 1.5-.2 2.4-1.1 2.6-2.6Z",
-    ],
-  },
-];
-
 // The notification switches from the app's settings, each drawn at the level where it fires.
 const alerts = [
   { label: "Quota reaches 50%", used: 50, level: "medium" },
@@ -137,7 +116,9 @@ const clips = {
         <ul>
           <li><a href="#features">Features</a></li>
           <li><a href="#install">Install</a></li>
-          <li><a href={repo}>GitHub</a></li>
+          <li>
+            <a href={repo}><GitHub class="icon" aria-hidden="true" />GitHub</a>
+          </li>
         </ul>
       </nav>
     </header>
@@ -145,37 +126,22 @@ const clips = {
     <main>
       <section class="wrap hero">
         <h1>
-          <span>Claude Code, Codex,</span>
-          <span>and Antigravity usage,</span>
+          <span>
+            <span class="brandname"
+              ><Claude class="logo" aria-hidden="true" />Claude Code,</span
+            >
+            <span class="brandname"
+              ><Codex class="logo" aria-hidden="true" />Codex,</span
+            >
+          </span>
+          <span>
+            and <span class="brandname"
+              ><Antigravity class="logo" aria-hidden="true" />Antigravity</span
+            >
+            usage,
+          </span>
           <span>one click away.</span>
         </h1>
-        <p class="lead">
-          A local-first tray app for Linux and Windows that shows every quota
-          window and when it resets, using the sign-in your CLIs already have.
-        </p>
-        <div class="actions">
-          <a class="button primary" href={links.appimage}>
-            Download for Linux <small>AppImage, amd64</small>
-          </a>
-          <a class="button primary" href={links.exe}>
-            Download for Windows <small>Installer, x64</small>
-          </a>
-          <a class="button ghost" href={repo}>View on GitHub</a>
-        </div>
-        <p class="release">
-          {
-            version && (
-              <a
-                class="tag"
-                href={links.notes}
-                aria-label={`${version} release notes`}
-              >
-                {version}
-              </a>
-            )
-          }
-          Also available as <a href={links.deb}>a .deb for Debian and Ubuntu</a>.
-        </p>
         <video
           class="frame"
           autoplay
@@ -194,43 +160,60 @@ const clips = {
             media="(prefers-reduced-motion: no-preference)"
           />
         </video>
-      </section>
-
-      <section class="wrap providers" aria-label="Supported providers">
-        <ul>
+        <p class="lead">
+          Every quota and every reset, right in your tray on Linux and Windows.
+          No new account, no stored credentials.
+        </p>
+        <div class="actions">
+          <div class="combo">
+            <a class="button primary" href={links.appimage}>
+              Download for Linux <small>AppImage, amd64</small>
+            </a>
+            <details class="downloads">
+              <summary class="button primary" aria-label="More Linux downloads">
+                <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" /></svg>
+              </summary>
+              <ul>
+                <li>
+                  <a href={links.appimage}>AppImage <small>Most distributions</small></a>
+                </li>
+                <li>
+                  <a href={links.deb}>.deb <small>Debian and Ubuntu</small></a>
+                </li>
+              </ul>
+            </details>
+          </div>
+          <a class="button primary" href={links.exe}>
+            Download for Windows <small>Installer, x64</small>
+          </a>
+          <a class="button ghost" href={repo}>
+            <GitHub class="icon" aria-hidden="true" />View on GitHub
+          </a>
           {
-            providers.map((provider) => (
-              <li>
-                <span class={`glyph ${provider.id}`} aria-hidden="true">
-                  <svg viewBox="0 0 24 24">
-                    {provider.paths.map((d) => (
-                      <path d={d} />
-                    ))}
-                  </svg>
-                </span>
-                {provider.name}
-              </li>
-            ))
+            version && (
+              <a
+                class="tag"
+                href={links.notes}
+                aria-label={`${version} release notes`}
+              >
+                {version}
+              </a>
+            )
           }
-        </ul>
-        <p>Not affiliated with Anthropic, OpenAI, or Google.</p>
+        </div>
       </section>
 
       <section id="features" class="section">
         <div class="wrap">
           <h2>Every limit at a glance</h2>
           <p class="intro">
-            Trayci refreshes on the schedule you pick, from every 5 minutes to
-            every hour, and again when your computer wakes up.
+            Fresh numbers on your schedule, and again the moment your computer
+            wakes.
           </p>
           <div class="features">
             <div class="feature">
               <h3>Detailed or compact</h3>
-              <p>
-                Detailed rows give every window its own bar. Compact rows show
-                only the tightest one and its countdown. Hover a provider to see
-                all its windows, and click to pin them.
-              </p>
+              <p>See every limit in full, or only the one that matters.</p>
               <video
                 class="frame media"
                 autoplay
@@ -252,11 +235,7 @@ const clips = {
             </div>
             <div class="feature">
               <h3>Know when it resets</h3>
-              <p>
-                Every window counts down to its reset, including all four of
-                Antigravity's: 5-hour and weekly, for Gemini and for Claude/GPT
-                models.
-              </p>
+              <p>A countdown on every limit, so you know when you're back.</p>
               <div class="frame media stage">
                 <img
                   src={countdowns.src}
@@ -270,11 +249,7 @@ const clips = {
             </div>
             <div class="feature">
               <h3>Notifications you choose</h3>
-              <p>
-                Opt in to an alert when a window reaches 50%, 85%, or 90%, the
-                points where its bar turns yellow, orange, and red, and another
-                when it resets.
-              </p>
+              <p>A heads-up before you run out, and another when you're back.</p>
               <div class="frame media stage">
                 <div
                   class="alerts"
@@ -297,10 +272,7 @@ const clips = {
             </div>
             <div class="feature">
               <h3>Light, dark, or Auto</h3>
-              <p>
-                Follow your system's theme or pick one, show used or remaining
-                percentages, and choose from four text sizes, S to XL.
-              </p>
+              <p>Matches your desktop, at the text size you read best.</p>
               <video
                 class="frame media"
                 autoplay
@@ -325,17 +297,13 @@ const clips = {
             <div>
               <h3>Local-first, credential-free</h3>
               <p>
-                Trayci reads usage with the sign-in each CLI already has and
-                never stores credentials.
+                Uses the sign-in your CLIs already have.
                 <a href="#privacy">How it handles your sign-ins</a>
               </p>
             </div>
             <div>
               <h3>Drag it anywhere</h3>
-              <p>
-                Move the popover by its title bar. On X11 it opens there next
-                time; on Wayland it opens wherever the compositor puts it.
-              </p>
+              <p>Move the popover wherever it suits you.</p>
             </div>
           </div>
         </div>
@@ -348,26 +316,55 @@ const clips = {
             <div>
               <h3>Reuses the sign-in you have</h3>
               <p>
-                Trayci reads usage with the sign-in that Claude Code, Codex, and
-                the agy CLI already have. There's no Trayci account to create.
+                Trayci fetches your usage with the sign-in Claude Code, Codex,
+                and Antigravity already have. There's no account to create.
               </p>
             </div>
             <div>
               <h3>Never stores credentials</h3>
-              <p>
-                Trayci doesn't save tokens or passwords. Each CLI keeps managing
-                its own sign-in.
-              </p>
+              <p>Your sign-ins are read, never copied or saved. Each CLI keeps its own.</p>
             </div>
             <div>
-              <h3>A cache with no secrets</h3>
+              <h3>Stays on your computer</h3>
               <p>
-                On Linux, settings and a credential-free usage cache live in
-                <code>~/.config/trayci</code>, or
-                <code>$XDG_CONFIG_HOME/trayci</code> when that's set.
+                Your settings and usage cache live on your machine. There's no
+                Trayci server.
               </p>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section id="compatibility" class="section">
+        <div class="wrap">
+          <h2>Where it runs</h2>
+          <ul class="platforms">
+            <li>
+              <span class="marks"><Linux aria-hidden="true" /></span>
+              <h3>Linux</h3>
+              <p>Ubuntu, Linux Mint, and more, on 64&#8209;bit Intel and AMD PCs.</p>
+            </li>
+            <li>
+              <span class="marks"><Windows aria-hidden="true" /></span>
+              <h3>Windows</h3>
+              <p>Installs in a few clicks on 64&#8209;bit Windows.</p>
+            </li>
+            <li>
+              <span class="marks">
+                <Claude aria-hidden="true" />
+                <Codex aria-hidden="true" />
+                <Antigravity aria-hidden="true" />
+              </span>
+              <h3>Works with your CLIs</h3>
+              <p>
+                Install and sign in to Claude Code, Codex, or Antigravity's agy.
+                Any one is enough.
+              </p>
+            </li>
+          </ul>
+          <p class="more">
+            <a href={`${repo}/blob/main/COMPATIBILITY.md`}>Full compatibility notes</a>
+          </p>
         </div>
       </section>
 
@@ -396,45 +393,6 @@ const clips = {
           </div>
         </div>
       </section>
-
-      <section id="compatibility" class="section">
-        <div class="wrap split">
-          <h2>Where it runs</h2>
-          <div>
-            <dl class="compat">
-              <div>
-                <dt>Linux amd64 on X11</dt>
-                <dd>
-                  AppImage or .deb. The popover opens where you last dragged it.
-                </dd>
-              </div>
-              <div>
-                <dt>Linux amd64 on Wayland</dt>
-                <dd>
-                  AppImage or .deb. You can drag the popover, but it opens
-                  wherever the compositor puts it. Forcing XWayland with
-                  <code>GDK_BACKEND=x11</code> doesn't help: the popover never
-                  gets input focus there.
-                </dd>
-              </div>
-              <div>
-                <dt>Windows x64</dt>
-                <dd>Installer (.exe). Not yet measured in the compatibility matrix.</dd>
-              </div>
-              <div>
-                <dt>Every platform</dt>
-                <dd>
-                  At least one provider CLI you're signed in to: Claude Code,
-                  Codex, or agy for Antigravity.
-                </dd>
-              </div>
-            </dl>
-            <p class="more">
-              <a href={`${repo}/blob/main/COMPATIBILITY.md`}>Full compatibility notes</a>
-            </p>
-          </div>
-        </div>
-      </section>
     </main>
 
     <footer class="wrap footer">
@@ -447,7 +405,33 @@ const clips = {
         <li><a href={`${repo}/releases`}>Releases</a></li>
         <li><a href={`${repo}/blob/main/LICENSE`}>MIT License</a></li>
       </ul>
+      <a class="author" href="https://reqhiem.dev">
+        <img
+          src="https://avatars.githubusercontent.com/reqhiem?s=80"
+          width="40"
+          height="40"
+          alt=""
+          loading="lazy"
+          decoding="async"
+        />
+        <span>Developed by <strong>reqhiem</strong></span>
+      </a>
       <p>Not affiliated with Anthropic, OpenAI, or Google.</p>
     </footer>
+
+    <script>
+      // <details> has no light dismiss: close the Linux menu on Escape or a click outside it.
+      const menu = document.querySelector<HTMLDetailsElement>(".downloads");
+      if (menu) {
+        document.addEventListener("click", (event) => {
+          if (!menu.contains(event.target as Node)) menu.open = false;
+        });
+        menu.addEventListener("keydown", (event) => {
+          if (event.key !== "Escape" || !menu.open) return;
+          menu.open = false;
+          menu.querySelector("summary")?.focus();
+        });
+      }
+    </script>
   </body>
 </html>

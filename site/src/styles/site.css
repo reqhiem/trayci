@@ -173,7 +173,9 @@ pre code {
 
 .nav ul a,
 .footer ul a {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   padding-block: 0.5rem;
   color: var(--muted);
   text-decoration: none;
@@ -189,6 +191,35 @@ pre code {
   border-top: 1px solid var(--line);
 }
 
+.icon {
+  width: 1.125rem;
+  height: 1.125rem;
+  flex: none;
+  fill: currentColor;
+}
+
+.author {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.author img {
+  border: 1px solid var(--line);
+  border-radius: 50%;
+}
+
+.author strong {
+  color: var(--paper);
+  font-weight: 500;
+}
+
+.author:hover strong {
+  color: var(--accent);
+}
+
 .footer p {
   flex-basis: 100%;
   color: var(--muted);
@@ -202,14 +233,27 @@ pre code {
 }
 
 @media (min-width: 64rem) {
-  .hero h1 span {
+  .hero h1 > span {
     display: block;
   }
 }
 
+/* A mark never wraps away from its name. */
+.brandname {
+  white-space: nowrap;
+}
+
+/* The official marks, each fitted into the same box (their viewBoxes are cropped tight) and centred on the cap height. */
+.hero h1 .logo {
+  width: 0.92em;
+  height: 0.8em;
+  margin-right: 0.18em;
+  vertical-align: -0.07em;
+}
+
 .lead {
   max-width: 38rem;
-  margin-top: 1.5rem;
+  margin-top: clamp(2rem, 1.5rem + 2vw, 3rem);
   color: var(--muted);
   font-size: clamp(1.125rem, 1rem + 0.5vw, 1.3125rem);
 }
@@ -217,8 +261,9 @@ pre code {
 .actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.75rem;
-  margin-top: 2.25rem;
+  margin-top: 1.75rem;
 }
 
 .button {
@@ -233,6 +278,12 @@ pre code {
   line-height: 1.25;
   text-decoration: none;
   white-space: nowrap;
+}
+
+.button:has(> .icon) {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .button small {
@@ -258,16 +309,93 @@ pre code {
   border-color: var(--accent-line);
 }
 
-@media (max-width: 30rem) {
-  .actions .button {
-    flex: 1 1 100%;
-  }
+/* Linux split button: the AppImage link, plus a menu that adds the .deb. */
+.combo {
+  position: relative;
+  display: flex;
+  gap: 1px;
 }
 
-.release {
-  margin-top: 1.25rem;
+.combo > .button {
+  border-radius: 0.5rem 0 0 0.5rem;
+}
+
+.downloads summary {
+  height: 100%;
+  padding-inline: 1rem;
+  border-radius: 0 0.5rem 0.5rem 0;
+  background: color-mix(in srgb, var(--accent), var(--ink) 14%);
+  cursor: pointer;
+  list-style: none;
+}
+
+.downloads summary::-webkit-details-marker {
+  display: none;
+}
+
+.downloads summary svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: rotate 0.15s;
+}
+
+.downloads[open] summary svg {
+  rotate: 180deg;
+}
+
+.downloads ul {
+  position: absolute;
+  z-index: 1;
+  top: calc(100% + 0.5rem);
+  left: 0;
+  width: max(100%, 16rem);
+  margin: 0;
+  padding: 0.375rem;
+  border: 1px solid var(--tint);
+  border-radius: 0.625rem;
+  background: var(--surface);
+  box-shadow: 0 1rem 2.5rem rgba(0, 0, 0, 0.5);
+  list-style: none;
+}
+
+.downloads a {
+  display: grid;
+  gap: 0.125rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.375rem;
+  color: var(--paper);
+  font-weight: 550;
+  text-decoration: none;
+}
+
+.downloads a:hover {
+  background: var(--tint-soft);
+}
+
+.downloads small {
   color: var(--muted);
-  font-size: 0.9375rem;
+  font-weight: 400;
+}
+
+@media (max-width: 30rem) {
+  .actions > .primary,
+  .combo {
+    flex: 1 1 100%;
+  }
+
+  .actions > .ghost {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .combo > .button {
+    flex: 1;
+  }
 }
 
 .tag {
@@ -284,89 +412,13 @@ pre code {
 
 .hero video {
   width: 100%;
-  margin-top: clamp(2.5rem, 1.5rem + 4vw, 4rem);
+  margin-top: clamp(2rem, 1.5rem + 3vw, 3.5rem);
 }
 
 .frame {
   border: 1px solid var(--line);
   border-radius: 0.75rem;
   background: var(--sunken);
-}
-
-/* Providers: the glyphs are drawn exactly as the app's .provider-icon, only larger. */
-
-.providers {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem 2rem;
-  padding-block: 1.75rem;
-}
-
-.providers ul {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem 2.25rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.providers li {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  font-size: 1.125rem;
-  font-weight: 500;
-}
-
-.providers p {
-  color: var(--muted);
-  font-size: 0.9375rem;
-}
-
-.glyph {
-  display: grid;
-  width: 2.25rem;
-  height: 2.25rem;
-  place-items: center;
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  background: var(--tint-soft);
-}
-
-.glyph svg {
-  width: 1.375rem;
-  height: 1.375rem;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.35;
-}
-
-.glyph.claude {
-  color: var(--accent);
-}
-
-.glyph.codex {
-  color: var(--paper);
-}
-
-.glyph.codex svg {
-  width: 1.5rem;
-  height: 1.5rem;
-  stroke-width: 1.1;
-}
-
-.glyph.antigravity {
-  color: var(--antigravity);
-}
-
-.glyph.antigravity svg {
-  fill: currentColor;
-  stroke-width: 0;
 }
 
 /* Sections */
@@ -501,7 +553,7 @@ pre code {
   }
 }
 
-/* Privacy and compatibility: heading on the left, facts on the right. */
+/* Privacy: heading on the left, facts on the right. */
 
 .split {
   display: grid;
@@ -558,24 +610,43 @@ pre code {
   }
 }
 
-.compat > div {
+.platforms {
   display: grid;
-  gap: 0.375rem 2rem;
-  padding-block: 1.25rem;
-  border-top: 1px solid var(--line);
+  gap: 1rem;
+  margin: clamp(2rem, 1.5rem + 2vw, 3rem) 0 0;
+  padding: 0;
+  list-style: none;
 }
 
-.compat dt {
-  font-weight: 500;
+.platforms li {
+  display: grid;
+  gap: 0.5rem;
+  align-content: start;
+  padding: 1.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--surface);
 }
 
-.compat dd {
+.platforms p {
   color: var(--muted);
 }
 
+.marks {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.marks svg {
+  width: 2.5rem;
+  height: 2.5rem;
+  fill: currentColor;
+}
+
 @media (min-width: 45rem) {
-  .compat > div {
-    grid-template-columns: 13rem minmax(0, 1fr);
+  .platforms {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
