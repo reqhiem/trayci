@@ -1,9 +1,16 @@
 name: CI
 
 on:
+  # The landing builds and deploys in pages.yml; a site-only change needs none of these.
   pull_request:
+    paths-ignore:
+      - "site/**"
+      - ".github/workflows/pages.yml"
   push:
     branches: [main]
+    paths-ignore:
+      - "site/**"
+      - ".github/workflows/pages.yml"
 
 permissions:
   contents: read
