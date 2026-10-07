@@ -41,7 +41,19 @@ Trayci is a local-first system tray app for Linux and Windows. It shows how much
 
 ## Install
 
-Download the latest release from [GitHub Releases](https://github.com/reqhiem/trayci/releases/latest).
+From a terminal, on Linux (the `.deb` where `apt-get` exists, the AppImage elsewhere):
+
+```bash
+curl -fsSL https://reqhiem.github.io/trayci/install.sh | sh
+```
+
+On Windows, in PowerShell:
+
+```powershell
+irm https://reqhiem.github.io/trayci/install.ps1 | iex
+```
+
+Or download the latest release from [GitHub Releases](https://github.com/reqhiem/trayci/releases/latest).
 
 AppImage, on any distribution:
 

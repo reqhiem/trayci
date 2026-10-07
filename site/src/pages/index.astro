@@ -14,6 +14,7 @@ const canonical = new URL(base, Astro.site).href;
 const ogImage = new URL(`${base}og.png`, Astro.site).href;
 const repo = "https://github.com/reqhiem/trayci";
 const latest = `${repo}/releases/latest`;
+const script = (name: string) => new URL(`${base}${name}`, Astro.site).href;
 
 const title = "Trayci: Claude Code, Codex, and Antigravity usage in your tray";
 const description =
@@ -375,6 +376,16 @@ const clips = {
             {versionLabel}, from <a href={`${repo}/releases`}>GitHub Releases</a>.
           </p>
           <div class="installs">
+            <div class="install">
+              <h3>Terminal <small>Linux and Windows</small></h3>
+              <div class="commands">
+                <span>Linux</span>
+                <pre><code>curl -fsSL {script("install.sh")} | sh</code></pre>
+                <span>Windows PowerShell</span>
+                <pre><code>irm {script("install.ps1")} | iex</code></pre>
+              </div>
+              <a class="button ghost" href={`${repo}/tree/main/site/public`}>Read the scripts</a>
+            </div>
             <div class="install">
               <h3>AppImage <small>Linux amd64</small></h3>
               <pre><code>chmod +x Trayci_*_amd64.AppImage && ./Trayci_*_amd64.AppImage</code></pre>
