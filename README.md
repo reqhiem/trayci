@@ -28,7 +28,7 @@ Trayci is a local-first system tray app for Linux and Windows. It shows how much
 
 - **Every provider at a glance.** Claude Code, Codex, and Antigravity side by side, sorted by the limit closest to running out or in the order you choose.
 - **Detailed or compact.** Detailed shows every window as a meter; compact shows each provider's tightest one. Hover a provider to open its detail pane, click to pin it.
-- **Reset countdowns** for every window, including Antigravity's 5-hour and weekly limits for Gemini and Claude/GPT models.
+- **Reset countdowns** for every window, including every Antigravity quota pool: the 5-hour and weekly limits for Gemini and Claude/GPT models, and any pool agy adds, such as Gemini 4 Argon.
 - **Opt-in notifications** when a quota reaches 50, 85, or 90 percent, and when a reset completes.
 - **Your way:** used or remaining percentages, light, dark, or system theme, and four text sizes.
 - **Quietly current.** Refreshes every 5 to 60 minutes and after resume, flags stale readings, and keeps a credential-free cache so the popover opens instantly.
@@ -74,11 +74,11 @@ Trayci needs at least one provider CLI that is installed and signed in: `claude`
 
 ## How it reads usage
 
-| Provider    | Reads                                                                               | Falls back to                                                         |
-| ----------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| Claude Code | Anthropic's usage endpoint, with the sign-in Claude Code already keeps on your disk | The `claude` CLI's `/usage` panel                                     |
-| Codex       | `codex app-server` over stdio                                                       | The `codex` CLI's `/status` panel                                     |
-| Antigravity | The signed-in `agy` CLI's `/usage` panel                                            | Google Code Assist quota, when Gemini OAuth credentials are available |
+| Provider    | Reads                                                                               | Falls back to                                                 |
+| ----------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| Claude Code | Anthropic's usage endpoint, with the sign-in Claude Code already keeps on your disk | The `claude` CLI's `/usage` panel                             |
+| Codex       | `codex app-server` over stdio                                                       | The `codex` CLI's `/status` panel                             |
+| Antigravity | `agy -p /usage --output-format json` (agy 1.1.11 or newer)                          | The `agy` CLI's `/usage` panel, then Google Code Assist quota |
 
 Credentials are only read, never copied or written. On Linux, settings and a credential-free cache live in `$XDG_CONFIG_HOME/trayci`, or `~/.config/trayci` when it is unset.
 

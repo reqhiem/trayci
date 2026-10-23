@@ -6,7 +6,7 @@
 | Ubuntu 25       | GNOME              |                Pass |    Pass |       Pass |    Pass |    Pass |     Not run |
 | Ubuntu 25.10    | GNOME 49 / Wayland |                Pass | Partial |    Not run | Not run | Not run |     Not run |
 
-The Mint and Ubuntu 25 (GNOME) rows were checked with the packaged Electron runtime, real local provider sessions, the renderer E2E, and XDG autostart writing in an isolated configuration directory. Antigravity's four quota windows were validated on Mint against a signed-in `agy` 1.1.11 session; packaged popover validation remains pending.
+The Mint and Ubuntu 25 (GNOME) rows were checked with the packaged Electron runtime, real local provider sessions, the renderer E2E, and XDG autostart writing in an isolated configuration directory. Antigravity's four quota windows were validated on Mint against a signed-in `agy` 1.1.11 session through the interactive `/usage` panel; packaged popover validation remains pending. The print-mode JSON reader that now comes first, and with it pools beyond the first two such as Gemini 4 Argon, is covered by a recorded `agy` reply in the core tests but has not been run against a live session on these rows.
 
 The Ubuntu 25.10 row was checked against the Tauri build (v0.4.2 plus the drag fix below) with a debug binary, opening the popover from the tray menu. Usage from the local provider sessions rendered, but was not checked against the CLIs. The popover is Partial because it cannot be placed on Wayland; see below.
 

@@ -15,6 +15,14 @@ export type UsageWindow = {
   durationMinutes: number | null;
   resetsAt: number | null;
   resetDescription: string | null;
+  /** The quota pool the window belongs to, for providers that meter models in groups. */
+  group?: UsageGroup;
+};
+
+export type UsageGroup = {
+  name: string;
+  /** The models that share the pool, when the provider lists them. */
+  models: string | null;
 };
 
 export type ProviderUsageSnapshot = {

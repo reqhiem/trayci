@@ -46,6 +46,18 @@ pub struct UsageWindow {
     pub duration_minutes: Option<u64>,
     pub resets_at: Option<u64>,
     pub reset_description: Option<String>,
+    /// The quota pool the window belongs to, for providers whose models share limits in groups
+    /// (Antigravity). Absent for everything else, so cached snapshots and plugins stay valid.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<UsageGroup>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageGroup {
+    pub name: String,
+    /// The models that share the pool, when the provider lists them.
+    pub models: Option<String>,
 }
 
 impl UsageWindow {

@@ -400,6 +400,22 @@ h1 {
 .detail-metrics {
   padding: 0 9px;
 }
+.pool-header {
+  display: grid;
+  gap: 3px;
+  padding: 14px 0 2px;
+  color: var(--muted);
+}
+.pool-header strong {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.pool-header span {
+  font-size: 10px;
+  opacity: 0.8;
+}
 .metric {
   padding: 11px 0 10px;
   border-bottom: 1px solid var(--line);

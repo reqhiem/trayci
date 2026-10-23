@@ -142,6 +142,7 @@ mod tests {
             duration_minutes,
             resets_at: None,
             reset_description: None,
+            group: None,
         }
     }
 }
