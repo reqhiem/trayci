@@ -33,6 +33,7 @@ fn snapshot(percent: f64, status: UsageStatus) -> ProviderUsageSnapshot {
             duration_minutes: Some(300),
             resets_at: Some(2_000),
             reset_description: None,
+            group: None,
         }],
         updated_at: 1_000,
         source: Some(UsageSource::Oauth),

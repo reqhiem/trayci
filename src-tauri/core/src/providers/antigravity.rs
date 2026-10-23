@@ -1,7 +1,7 @@
 use super::{
     common::{
         clamp, epoch_ms, home_dir, rate_limited, reset_from_text, reset_phrase, resolve_executable,
-        run_pty, PtyOptions,
+        run_process, run_pty, PtyOptions,
     },
     google_oauth,
 };
@@ -12,8 +12,11 @@ use serde_json::{json, Value};
 use std::{
     collections::HashMap,
     env, fs,
-    path::PathBuf,
-    sync::{Arc, LazyLock},
+    path::{Path, PathBuf},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, LazyLock,
+    },
     time::Duration,
 };
 
@@ -122,6 +125,7 @@ pub fn normalize_antigravity_quota(value: &Value) -> Vec<UsageWindow> {
                 duration_minutes: Some(60),
                 resets_at: resets,
                 reset_description: reset_desc,
+                group: None,
             },
             known,
         );
@@ -141,12 +145,234 @@ pub fn normalize_antigravity_quota(value: &Value) -> Vec<UsageWindow> {
     windows.into_iter().map(|(window, _)| window).collect()
 }
 
+/// `agy` answers `/usage` in print mode as a command from this version on. Older builds send the
+/// text to the model as a prompt, so every poll would start a conversation and spend quota.
+const MIN_PRINT_USAGE: (u64, u64, u64) = (1, 1, 11);
+/// A due update check makes `agy` start its background updater; a quota read must not update the
+/// CLI. Only `true` disables it.
+const PROBE_ENV: &[(&str, &str)] = &[("AGY_CLI_DISABLE_AUTO_UPDATE", "true")];
+/// Latched once `agy` answers the print-mode read with a model turn. The evidence is the same event
+/// that spends quota, so the read is not retried for the rest of the process's life.
+static PRINT_USAGE_UNSUPPORTED: AtomicBool = AtomicBool::new(false);
+
+pub fn parse_agy_version(output: &str) -> Option<(u64, u64, u64)> {
+    static VERSION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\d+)\.(\d+)\.(\d+)").unwrap());
+    let captures = VERSION.captures(output)?;
+    Some((
+        captures[1].parse().ok()?,
+        captures[2].parse().ok()?,
+        captures[3].parse().ok()?,
+    ))
+}
+
+/// "Gemini Models" reads "Gemini" and "Claude and GPT models" reads "Claude/GPT"; a pool named
+/// after one model ("Gemini 4 Argon") keeps its name.
+fn pool_name(group: &str) -> String {
+    let trimmed = group.trim();
+    let stem = trimmed
+        .len()
+        .checked_sub(" models".len())
+        .filter(|&at| trimmed.is_char_boundary(at) && trimmed[at..].eq_ignore_ascii_case(" models"))
+        .map_or(trimmed, |at| &trimmed[..at]);
+    stem.replace(" and ", "/")
+}
+
+/// The window's own name: the two lengths agy meters, or its label without the pool prefix and
+/// the "Limit Remaining" suffix, so an unknown window is named rather than forced into one of them.
+fn window_name(duration: Option<u64>, bucket: &str, group: &str) -> String {
+    match duration {
+        Some(300) => "5h".into(),
+        Some(10_080) => "Weekly".into(),
+        _ => {
+            let name = bucket
+                .get(..group.len())
+                .filter(|prefix| prefix.eq_ignore_ascii_case(group))
+                .map_or(bucket, |_| &bucket[group.len()..])
+                .trim();
+            let name = ["Limit Remaining", "Limit"]
+                .iter()
+                .find_map(|suffix| name.strip_suffix(suffix))
+                .unwrap_or(name)
+                .trim();
+            if name.is_empty() {
+                bucket.trim().into()
+            } else {
+                name.into()
+            }
+        }
+    }
+}
+
+fn usage_envelope(stdout: &str) -> impl Iterator<Item = Value> + '_ {
+    stdout
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with('{'))
+        .filter_map(|line| serde_json::from_str(line).ok())
+}
+
+/// Reads what `agy -p /usage --output-format json` prints: an envelope whose `command.data.groups`
+/// lists every quota pool and its buckets. Every group is kept, so a new pool appears without a
+/// code change. `None` means the reply is not a successful usage reading, which is not the same
+/// as an empty one.
+pub fn parse_antigravity_json(stdout: &str) -> Option<Vec<UsageWindow>> {
+    usage_envelope(stdout).find_map(|value| {
+        if value.get("status").and_then(Value::as_str) != Some("SUCCESS") {
+            return None;
+        }
+        let command = value.get("command")?;
+        // `/usage` and `/quota` both answer as `usage`; the name proves this is a quota reply.
+        if command.get("name").and_then(Value::as_str) != Some("usage") {
+            return None;
+        }
+        let mut windows = Vec::new();
+        for group in command.pointer("/data/groups")?.as_array()? {
+            let Some(name) = group.get("name").and_then(Value::as_str) else {
+                continue;
+            };
+            let models = group
+                .get("description")
+                .and_then(Value::as_str)
+                .and_then(|text| text.strip_prefix("Models within this group:"))
+                .map(|text| text.trim().to_owned())
+                .filter(|text| !text.is_empty());
+            // A disabled bucket is one the tier does not meter; drawing it as 0% used would report
+            // headroom the account does not have.
+            let mut buckets = group
+                .get("buckets")
+                .and_then(Value::as_array)
+                .map(Vec::as_slice)
+                .unwrap_or_default()
+                .iter()
+                .filter(|bucket| bucket.get("disabled").and_then(Value::as_bool) != Some(true))
+                .filter_map(|bucket| {
+                    let duration = match bucket.get("window").and_then(Value::as_str) {
+                        Some("5h") => Some(300),
+                        Some("weekly") => Some(10_080),
+                        _ => None,
+                    };
+                    let remaining = bucket
+                        .get("remaining_fraction")
+                        .and_then(Value::as_f64)
+                        .filter(|value| value.is_finite())?;
+                    Some((
+                        bucket.get("id").and_then(Value::as_str)?.to_owned(),
+                        bucket.get("name").and_then(Value::as_str).unwrap_or(name),
+                        duration,
+                        clamp(((1.0 - remaining) * 100.0).round()),
+                        bucket.get("reset_time").and_then(epoch_ms),
+                    ))
+                })
+                .collect::<Vec<_>>();
+            // Shortest window first, the order the other providers use.
+            buckets.sort_by_key(|bucket| bucket.2.unwrap_or(u64::MAX));
+            let pool = pool_name(name);
+            let single = buckets.len() == 1;
+            for (id, bucket, duration, used, resets) in buckets {
+                windows.push(UsageWindow {
+                    id,
+                    label: if single {
+                        pool.clone()
+                    } else {
+                        format!("{pool} {}", window_name(duration, bucket, name))
+                    },
+                    used_percent: used,
+                    duration_minutes: duration,
+                    resets_at: resets,
+                    reset_description: None,
+                    group: Some(UsageGroup {
+                        name: name.to_owned(),
+                        models: models.clone(),
+                    }),
+                });
+            }
+        }
+        (!windows.is_empty()).then_some(windows)
+    })
+}
+
+/// True when the reply shows `agy` ran a model turn instead of answering a command. A real command
+/// reply has no conversation and no turns; a prompt has both.
+pub fn ran_model_turn(stdout: &str) -> bool {
+    usage_envelope(stdout).any(|value| {
+        value
+            .get("num_turns")
+            .and_then(Value::as_u64)
+            .is_some_and(|turns| turns > 0)
+            || value
+                .get("conversation_id")
+                .and_then(Value::as_str)
+                .is_some_and(|id| !id.is_empty())
+    })
+}
+
+/// Reads quota from `agy` in print mode, which spends nothing and needs no terminal. Any failure is
+/// returned so the caller can fall back to the interactive panel.
+async fn print_usage(
+    executable: &Path,
+    cancellation: &tokio_util::sync::CancellationToken,
+) -> Result<Vec<UsageWindow>, ProviderError> {
+    let unsupported = || {
+        ProviderError::new(
+            ProviderErrorKind::Parse,
+            "This agy cannot report usage in print mode",
+        )
+    };
+    if PRINT_USAGE_UNSUPPORTED.load(Ordering::Relaxed) {
+        return Err(unsupported());
+    }
+    // Rechecked on every read: the CLI can be replaced while Trayci runs, and an unsupported read
+    // costs quota.
+    let version = run_process(
+        executable,
+        &["--version"],
+        PROBE_ENV,
+        Duration::from_secs(5),
+        cancellation,
+    )
+    .await?;
+    let version = parse_agy_version(&String::from_utf8_lossy(&version.stdout))
+        .or_else(|| parse_agy_version(&String::from_utf8_lossy(&version.stderr)));
+    if version.map_or(true, |version| version < MIN_PRINT_USAGE) {
+        return Err(unsupported());
+    }
+    let output = run_process(
+        executable,
+        // Never add --disable-slash-commands: it turns `/usage` into a billed prompt.
+        &[
+            "-p",
+            "/usage",
+            "--output-format",
+            "json",
+            "--print-timeout",
+            "20s",
+        ],
+        PROBE_ENV,
+        Duration::from_secs(30),
+        cancellation,
+    )
+    .await?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if let Some(windows) = parse_antigravity_json(&stdout) {
+        return Ok(windows);
+    }
+    if ran_model_turn(&stdout) {
+        PRINT_USAGE_UNSUPPORTED.store(true, Ordering::Relaxed);
+        return Err(unsupported());
+    }
+    Err(ProviderError::new(
+        ProviderErrorKind::Parse,
+        "Could not parse Antigravity usage",
+    ))
+}
+
 fn quota_group(
     output: &str,
     heading: &Regex,
     next: Option<&Regex>,
     id: &str,
     name: &str,
+    group: &str,
     now: u64,
 ) -> Vec<UsageWindow> {
     let Some(start) = heading.find(output).map(|value| value.start()) else {
@@ -156,6 +382,12 @@ fn quota_group(
     let end = next
         .and_then(|pattern| pattern.find(&remainder[1..]).map(|value| value.start() + 1))
         .unwrap_or(remainder.len());
+    let models = remainder[..end].lines().find_map(|line| {
+        line.trim()
+            .strip_prefix("Models within this group:")
+            .map(|text| text.trim().to_owned())
+            .filter(|text| !text.is_empty())
+    });
     let section = remainder[..end]
         .split_whitespace()
         .collect::<Vec<_>>()
@@ -180,6 +412,10 @@ fn quota_group(
             duration_minutes: Some(duration),
             resets_at: reset.as_deref().and_then(|text| reset_from_text(text, now)),
             reset_description: reset,
+            group: Some(UsageGroup {
+                name: group.into(),
+                models: models.clone(),
+            }),
         })
     })
     .collect()
@@ -189,17 +425,26 @@ pub fn parse_antigravity_usage(output: &str, now: u64) -> (Vec<UsageWindow>, Opt
     static GEMINI: LazyLock<Regex> = LazyLock::new(|| Regex::new("(?i)GEMINI MODELS").unwrap());
     static CLAUDE: LazyLock<Regex> =
         LazyLock::new(|| Regex::new("(?i)CLAUDE AND GPT MODELS").unwrap());
-    let windows = quota_group(output, &GEMINI, Some(&CLAUDE), "gemini", "Gemini", now)
-        .into_iter()
-        .chain(quota_group(
-            output,
-            &CLAUDE,
-            None,
-            "claude-gpt",
-            "Claude/GPT",
-            now,
-        ))
-        .collect();
+    let windows = quota_group(
+        output,
+        &GEMINI,
+        Some(&CLAUDE),
+        "gemini",
+        "Gemini",
+        "Gemini Models",
+        now,
+    )
+    .into_iter()
+    .chain(quota_group(
+        output,
+        &CLAUDE,
+        None,
+        "claude-gpt",
+        "Claude/GPT",
+        "Claude and GPT models",
+        now,
+    ))
+    .collect();
     let plan = Regex::new(r"(?i)\((Google AI [^)]+)\)")
         .unwrap()
         .captures(output)
@@ -350,6 +595,12 @@ impl UsageProvider for AntigravityProvider {
         let detection = self.detect().await;
         let mut cli_error = None;
         if let Some(executable) = detection.executable_path {
+            match print_usage(&executable, &context.cancellation).await {
+                // The JSON reply carries no plan name; only the interactive panel prints it.
+                Ok(windows) => return Ok(snapshot(windows, None, context.now, UsageSource::Cli)),
+                Err(error) if error.kind == ProviderErrorKind::Aborted => return Err(error),
+                Err(_) => {}
+            }
             match run_pty(PtyOptions {
                 executable: &executable,
                 args: &[],

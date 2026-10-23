@@ -1,12 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
+  denseLabel,
   formatAge,
   formatResetCountdown,
+  poolAbbreviation,
   providerRank,
   statusSummary,
   tightestWindow,
+  windowGroups,
+  windowName,
 } from "../../src/shared/presentation";
-import type { ProviderUsageSnapshot } from "../../src/shared/types";
+import type {
+  ProviderUsageSnapshot,
+  UsageWindow,
+} from "../../src/shared/types";
 
 const snapshot: ProviderUsageSnapshot = {
   provider: "claude",
@@ -131,5 +138,68 @@ describe("providerRank", () => {
       ["plugin:new", 80],
     ];
     expect(sorted(["codex"], usage)).toEqual(["codex", "plugin:new", "claude"]);
+  });
+});
+
+describe("Antigravity pools", () => {
+  const gemini = { name: "Gemini Models", models: "Gemini Flash, Gemini Pro" };
+  const thirdParty = { name: "Claude and GPT models", models: null };
+  const argon = { name: "Gemini 4 Argon", models: null };
+  const meter = (
+    id: string,
+    durationMinutes: number | null,
+    group: UsageWindow["group"],
+    label = id,
+  ): UsageWindow => ({
+    id,
+    label,
+    usedPercent: 0,
+    durationMinutes,
+    resetsAt: null,
+    resetDescription: null,
+    group,
+  });
+  const windows = [
+    meter("gemini-5h", 300, gemini),
+    meter("gemini-weekly", 10_080, gemini),
+    meter("3p-5h", 300, thirdParty),
+    meter("3p-weekly", 10_080, thirdParty),
+    meter("gemini-argon-wtu-weekly", 10_080, argon, "Gemini 4 Argon"),
+  ];
+
+  it("abbreviates known pools and names new ones by their last word", () => {
+    expect(poolAbbreviation("Gemini Models")).toBe("Gem");
+    expect(poolAbbreviation("Claude and GPT models")).toBe("C/G");
+    expect(poolAbbreviation("Gemini 4 Argon")).toBe("Argon");
+    expect(poolAbbreviation("Nova models")).toBe("Nova");
+  });
+
+  it("labels row meters by pool and window, or by pool alone", () => {
+    expect(windows.map((window) => denseLabel(window, windows))).toEqual([
+      "Gem 5h",
+      "Gem wk",
+      "C/G 5h",
+      "C/G wk",
+      "Argon",
+    ]);
+    expect(denseLabel(snapshot.windows[1]!, snapshot.windows)).toBe("wk");
+    expect(denseLabel(snapshot.windows[0]!, snapshot.windows)).toBe("5h");
+  });
+
+  it("groups consecutive windows of a pool for the detail pane", () => {
+    expect(
+      windowGroups(windows).map(({ group, windows }) => [
+        group?.name,
+        windows.map(windowName),
+      ]),
+    ).toEqual([
+      ["Gemini Models", ["5h", "Weekly"]],
+      ["Claude and GPT models", ["5h", "Weekly"]],
+      ["Gemini 4 Argon", ["Weekly"]],
+    ]);
+    expect(windowGroups(snapshot.windows).map(({ group }) => group)).toEqual([
+      null,
+      null,
+    ]);
   });
 });

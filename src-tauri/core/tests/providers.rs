@@ -2,7 +2,10 @@ use serde_json::json;
 use std::{path::Path, sync::Arc, time::Duration};
 use tokio_util::sync::CancellationToken;
 use trayci_core::providers::{
-    antigravity::{normalize_antigravity_quota, parse_antigravity_usage},
+    antigravity::{
+        normalize_antigravity_quota, parse_agy_version, parse_antigravity_json,
+        parse_antigravity_usage, ran_model_turn,
+    },
     claude::{normalize_claude_usage, parse_claude_usage},
     codex::{normalize_codex_rate_limits, parse_codex_usage},
     common::{active_child_count, rate_limited, run_pty, strip_terminal_codes, PtyOptions},
@@ -164,6 +167,144 @@ fn antigravity_reads_the_refreshes_in_wording() {
         windows[0].reset_description.as_deref(),
         Some("Refreshes in 1h 49m")
     );
+    let groups = windows
+        .iter()
+        .map(|value| value.group.clone().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(groups[0].name, "Gemini Models");
+    assert_eq!(
+        groups[0].models.as_deref(),
+        Some("Gemini Flash, Gemini Pro")
+    );
+    assert_eq!(groups[3].name, "Claude and GPT models");
+    assert_eq!(
+        groups[3].models.as_deref(),
+        Some("Claude Opus, Claude Sonnet, GPT-OSS")
+    );
+}
+
+#[test]
+fn antigravity_print_mode_lists_every_pool() {
+    let windows =
+        parse_antigravity_json(include_str!("fixtures/antigravity/usage-print.json")).unwrap();
+    assert_eq!(
+        windows
+            .iter()
+            .map(|value| (
+                value.id.as_str(),
+                value.label.as_str(),
+                value.used_percent,
+                value.duration_minutes,
+                value.group.as_ref().map(|group| group.name.as_str()),
+            ))
+            .collect::<Vec<_>>(),
+        [
+            (
+                "gemini-5h",
+                "Gemini 5h",
+                0.0,
+                Some(300),
+                Some("Gemini Models")
+            ),
+            (
+                "gemini-weekly",
+                "Gemini Weekly",
+                7.0,
+                Some(10_080),
+                Some("Gemini Models")
+            ),
+            (
+                "3p-5h",
+                "Claude/GPT 5h",
+                0.0,
+                Some(300),
+                Some("Claude and GPT models")
+            ),
+            (
+                "3p-weekly",
+                "Claude/GPT Weekly",
+                0.0,
+                Some(10_080),
+                Some("Claude and GPT models")
+            ),
+            (
+                "gemini-argon-wtu-weekly",
+                "Gemini 4 Argon",
+                100.0,
+                Some(10_080),
+                Some("Gemini 4 Argon")
+            ),
+        ]
+    );
+    // 2026-10-24T15:22:30Z
+    assert_eq!(windows[4].resets_at, Some(1_792_855_350_000));
+    assert_eq!(
+        windows[0].group.as_ref().unwrap().models.as_deref(),
+        Some("Gemini Flash, Gemini Pro")
+    );
+    // Argon's description is prose, not a model list.
+    assert_eq!(windows[4].group.as_ref().unwrap().models, None);
+}
+
+#[test]
+fn antigravity_print_mode_skips_disabled_and_names_unknown_windows() {
+    let envelope = json!({"status":"SUCCESS","num_turns":0,"conversation_id":"","command":{"name":"usage","data":{"groups":[
+        {"name":"Gemini Models","buckets":[
+            {"id":"gemini-weekly","name":"Weekly Limit Remaining","window":"weekly","remaining_fraction":0.25},
+            {"id":"gemini-5h","name":"Five Hour Limit Remaining","window":"5h","remaining_fraction":1,"disabled":true}
+        ]},
+        {"name":"Gemini 5 Nova","buckets":[
+            {"id":"nova-daily","name":"Gemini 5 Nova Daily Limit","window":"daily","remaining_fraction":0.5},
+            {"id":"nova-weekly","name":"Gemini 5 Nova Weekly Limit","window":"weekly","remaining_fraction":0.9}
+        ]}
+    ]}}});
+    let windows = parse_antigravity_json(&format!("log noise\n{envelope}\n")).unwrap();
+    assert_eq!(
+        windows
+            .iter()
+            .map(|value| (
+                value.label.as_str(),
+                value.used_percent,
+                value.duration_minutes
+            ))
+            .collect::<Vec<_>>(),
+        [
+            ("Gemini", 75.0, Some(10_080)),
+            ("Gemini 5 Nova Weekly", 10.0, Some(10_080)),
+            ("Gemini 5 Nova Daily", 50.0, None),
+        ]
+    );
+}
+
+#[test]
+fn antigravity_print_mode_rejects_non_usage_replies() {
+    assert!(parse_antigravity_json("").is_none());
+    assert!(parse_antigravity_json(r#"{"status":"ERROR","command":{"name":"usage"}}"#).is_none());
+    assert!(parse_antigravity_json(
+        r#"{"status":"SUCCESS","command":{"name":"help","data":{"groups":[]}}}"#
+    )
+    .is_none());
+    assert!(parse_antigravity_json(
+        r#"{"status":"SUCCESS","command":{"name":"usage","data":{"groups":[]}}}"#
+    )
+    .is_none());
+    // A prompt answered by the model: what an agy that does not know `/usage` prints.
+    let prompt = r#"{"status":"SUCCESS","conversation_id":"abc","num_turns":1,"response":"Sure"}"#;
+    assert!(parse_antigravity_json(prompt).is_none());
+    assert!(ran_model_turn(prompt));
+    assert!(!ran_model_turn(include_str!(
+        "fixtures/antigravity/usage-print.json"
+    )));
+}
+
+#[test]
+fn reads_the_agy_version() {
+    assert_eq!(parse_agy_version("agy 1.4.2\n"), Some((1, 4, 2)));
+    assert_eq!(
+        parse_agy_version("Antigravity CLI v1.1.11 (abc)"),
+        Some((1, 1, 11))
+    );
+    assert_eq!(parse_agy_version("unknown"), None);
 }
 
 #[test]

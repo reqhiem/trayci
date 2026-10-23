@@ -1,4 +1,9 @@
-import type { ProviderUsageSnapshot, UsageSource, UsageWindow } from "./types";
+import type {
+  ProviderUsageSnapshot,
+  UsageGroup,
+  UsageSource,
+  UsageWindow,
+} from "./types";
 
 /**
  * Where a provider sits in the order the user arranged, for sorting. Ids the order does not
@@ -81,4 +86,66 @@ export function statusSummary(
 export function formatResetCountdown(resetsAt: number, now: number): string {
   const minutes = Math.max(0, Math.floor((resetsAt - now) / 60_000));
   return minutes ? formatDuration(minutes) : "now";
+}
+
+/** Short names for the pools agy ships today; any other pool is named by its last word. */
+const POOL_ABBREVIATIONS: Record<string, string> = {
+  "gemini models": "Gem",
+  "claude and gpt models": "C/G",
+};
+
+/** "Gemini Models" → "Gem", "Claude and GPT models" → "C/G", "Gemini 4 Argon" → "Argon". */
+export function poolAbbreviation(name: string): string {
+  const known = POOL_ABBREVIATIONS[name.trim().toLowerCase()];
+  if (known) return known;
+  const words = name
+    .replace(/\s+models$/i, "")
+    .trim()
+    .split(/\s+/);
+  return words[words.length - 1] || name;
+}
+
+/** The window's own length, for a meter that already sits under its pool's heading. */
+export function windowName(window: UsageWindow): string {
+  if (window.durationMinutes === 300) return "5h";
+  if (window.durationMinutes === 10_080) return "Weekly";
+  return window.label;
+}
+
+/**
+ * The label of a meter in a provider row, where a column is 40px wide: "Gem 5h", "C/G wk", or
+ * just the pool's name when that pool meters a single window ("Argon").
+ */
+export function denseLabel(
+  window: UsageWindow,
+  windows: readonly UsageWindow[],
+): string {
+  const group = window.group;
+  if (!group) return window.id === "weekly" ? "wk" : window.label;
+  const pool = poolAbbreviation(group.name);
+  const siblings = windows.filter(
+    (other) => other.group?.name === group.name,
+  ).length;
+  if (siblings <= 1) return pool;
+  const cadence =
+    window.durationMinutes === 300
+      ? "5h"
+      : window.durationMinutes === 10_080
+        ? "wk"
+        : windowName(window);
+  return `${pool} ${cadence}`;
+}
+
+/** Consecutive windows of the same pool, in the provider's order; ungrouped windows stand alone. */
+export function windowGroups(
+  windows: readonly UsageWindow[],
+): { group: UsageGroup | null; windows: UsageWindow[] }[] {
+  const sections: { group: UsageGroup | null; windows: UsageWindow[] }[] = [];
+  for (const window of windows) {
+    const last = sections[sections.length - 1];
+    if (last?.group && window.group?.name === last.group.name)
+      last.windows.push(window);
+    else sections.push({ group: window.group ?? null, windows: [window] });
+  }
+  return sections;
 }

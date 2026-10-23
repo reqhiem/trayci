@@ -226,6 +226,40 @@ pub async fn run_pty(options: PtyOptions<'_>) -> Result<String, ProviderError> {
     outcome
 }
 
+/// Runs a non-interactive CLI to completion and returns what it printed. The child dies with the
+/// future, so a timeout, a cancellation or a dropped refresh cannot leave it running.
+pub async fn run_process(
+    executable: &Path,
+    args: &[&str],
+    env: &[(&str, &str)],
+    timeout: Duration,
+    cancellation: &CancellationToken,
+) -> Result<std::process::Output, ProviderError> {
+    if cancellation.is_cancelled() {
+        return Err(ProviderError::new(ProviderErrorKind::Aborted, "Cancelled"));
+    }
+    let mut command = tokio::process::Command::new(executable);
+    command
+        .args(args)
+        .envs(env.iter().copied())
+        .current_dir(bounded_cwd()?)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+    // CREATE_NO_WINDOW: the GUI-subsystem app has no console to lend, so Windows would open one.
+    #[cfg(windows)]
+    command.creation_flags(0x0800_0000);
+    let child = command.spawn().map_err(|error| {
+        ProviderError::new(ProviderErrorKind::Unknown, format!("CLI start: {error}"))
+    })?;
+    tokio::select! {
+        output = child.wait_with_output() => output.map_err(|error| ProviderError::new(ProviderErrorKind::Unknown, format!("CLI output: {error}"))),
+        _ = cancellation.cancelled() => Err(ProviderError::new(ProviderErrorKind::Aborted, "Cancelled")),
+        _ = tokio::time::sleep(timeout) => Err(ProviderError::new(ProviderErrorKind::Timeout, "CLI probe timed out")),
+    }
+}
+
 pub fn strip_terminal_codes(value: &str) -> String {
     static OSC: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"\x1b\][^\x07]*(?:\x07|\x1b\\)").unwrap());

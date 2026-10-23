@@ -10,12 +10,15 @@ import type {
 } from "../../shared/types";
 import { DEFAULT_SETTINGS, FONT_SCALES } from "../../shared/types";
 import {
+  denseLabel,
   formatAge,
   formatResetCountdown,
   providerRank,
   SOURCE_LABELS,
   statusSummary,
   tightestWindow,
+  windowGroups,
+  windowName,
 } from "../../shared/presentation";
 import { trayci } from "./bridge";
 
@@ -36,13 +39,6 @@ function displayPercent(
 ): number {
   const used = Math.min(100, Math.max(0, window.usedPercent));
   return Math.round(mode === "used" ? used : 100 - used);
-}
-
-function denseLabel(window: UsageWindow): string {
-  const cadence = window.durationMinutes === 10_080 ? "wk" : "5h";
-  if (window.id.startsWith("gemini-")) return `Gem ${cadence}`;
-  if (window.id.startsWith("claude-gpt-")) return `C/G ${cadence}`;
-  return window.id === "weekly" ? "wk" : window.label;
 }
 
 function ProviderIcon({
@@ -81,11 +77,13 @@ function ProviderIcon({
 
 function Metric({
   window,
+  label,
   settings,
   now,
   dense = false,
 }: {
   window: UsageWindow;
+  label: string;
   settings: TrayciSettings;
   now: number;
   dense?: boolean;
@@ -104,7 +102,7 @@ function Metric({
   return (
     <div className={dense ? "metric metric-dense" : "metric"}>
       <div className="metric-copy">
-        <strong>{dense ? denseLabel(window) : window.label}</strong>
+        <strong>{label}</strong>
       </div>
       <div className="metric-line">
         <div
@@ -191,6 +189,7 @@ function ProviderRow({
             <Metric
               key={window.id}
               window={window}
+              label={denseLabel(window, snapshot.windows)}
               settings={settings}
               now={now}
               dense
@@ -238,14 +237,39 @@ function ProviderDetail({
         </span>
       </header>
       <div className="detail-metrics">
-        {snapshot.windows.map((window) => (
-          <Metric
-            key={window.id}
-            window={window}
-            settings={settings}
-            now={now}
-          />
-        ))}
+        {windowGroups(snapshot.windows).map(({ group, windows }) =>
+          group ? (
+            <section
+              className="pool"
+              key={group.name}
+              aria-label={`${group.name} quota`}
+            >
+              <header className="pool-header">
+                <strong>{group.name}</strong>
+                {group.models ? <span>{group.models}</span> : null}
+              </header>
+              {windows.map((window) => (
+                <Metric
+                  key={window.id}
+                  window={window}
+                  label={windowName(window)}
+                  settings={settings}
+                  now={now}
+                />
+              ))}
+            </section>
+          ) : (
+            windows.map((window) => (
+              <Metric
+                key={window.id}
+                window={window}
+                label={window.label}
+                settings={settings}
+                now={now}
+              />
+            ))
+          ),
+        )}
         {snapshot.error ? (
           <div className="inline-error">{snapshot.error}</div>
         ) : null}

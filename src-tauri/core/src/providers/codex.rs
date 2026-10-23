@@ -136,6 +136,7 @@ pub fn normalize_codex_rate_limits(raw: &Value) -> (Vec<UsageWindow>, Option<Str
                 duration_minutes: duration,
                 resets_at: value.get("resetsAt").and_then(epoch_ms),
                 reset_description: None,
+                group: None,
             });
         }
     }
@@ -182,6 +183,7 @@ pub fn parse_codex_usage(output: &str, now: u64) -> Vec<UsageWindow> {
             duration_minutes: Some(duration),
             resets_at: reset.as_deref().and_then(|text| reset_from_text(text, now)),
             reset_description: reset,
+            group: None,
         })
     })
     .collect()

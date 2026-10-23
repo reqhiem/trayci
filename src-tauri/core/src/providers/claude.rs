@@ -85,6 +85,7 @@ fn window(
         duration_minutes: Some(duration),
         resets_at: reset.and_then(epoch_ms),
         reset_description: None,
+        group: None,
     }
 }
 
@@ -247,7 +248,7 @@ pub fn parse_claude_usage(output: &str, now: u64) -> Vec<UsageWindow> {
         if Regex::new("(?i)left|remaining|available").unwrap().is_match(&captures[2]) { percent = 100.0 - percent; }
         let tail = captures.get(3).map_or("", |value| value.as_str());
         let reset = Regex::new(r"(?i)resets?\s+(?:in\s+)?[^|·,]{1,40}").unwrap().find(tail).map(|value| value.as_str().trim().to_owned());
-        Some(UsageWindow { id: id.into(), label: label.into(), used_percent: clamp(percent), duration_minutes: Some(duration), resets_at: reset.as_deref().and_then(|text| reset_from_text(text, now)), reset_description: reset })
+        Some(UsageWindow { id: id.into(), label: label.into(), used_percent: clamp(percent), duration_minutes: Some(duration), resets_at: reset.as_deref().and_then(|text| reset_from_text(text, now)), reset_description: reset, group: None })
     }).collect()
 }
 
