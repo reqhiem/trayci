@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
-  denseLabel,
+  detailLabel,
+  displayPercent,
   formatAge,
   formatResetCountdown,
-  poolAbbreviation,
+  poolName,
   providerRank,
+  rowLabel,
+  severity,
   statusSummary,
   tightestWindow,
-  windowGroups,
-  windowName,
 } from "../../src/shared/presentation";
 import type {
   ProviderUsageSnapshot,
@@ -61,7 +62,7 @@ describe("presentation helpers", () => {
       text: "Updated 7m ago",
       stale: true,
     });
-    expect(formatAge(0, 0, "just now")).toBe("Updated just now");
+    expect(formatAge(0, 0)).toBe("Updated just now");
   });
 
   it("prefers the tightest reset while a reading is current", () => {
@@ -73,7 +74,7 @@ describe("presentation helpers", () => {
       })),
     };
     expect(statusSummary(fresh, 0)).toEqual({
-      text: "Resets in 1h 30m",
+      text: "1h 30m",
       stale: false,
     });
     expect(statusSummary({ ...snapshot, windows: [] }, 0)).toBeNull();
@@ -141,7 +142,8 @@ describe("providerRank", () => {
   });
 });
 
-describe("Antigravity pools", () => {
+// The vocabulary table in issue #66, shared with the TUI (#67) and the Figma library (#68).
+describe("vocabulary", () => {
   const gemini = { name: "Gemini Models", models: "Gemini Flash, Gemini Pro" };
   const thirdParty = { name: "Claude and GPT models", models: null };
   const argon = { name: "Gemini 4 Argon", models: null };
@@ -149,7 +151,7 @@ describe("Antigravity pools", () => {
     id: string,
     durationMinutes: number | null,
     group: UsageWindow["group"],
-    label = id,
+    label: string,
   ): UsageWindow => ({
     id,
     label,
@@ -159,47 +161,105 @@ describe("Antigravity pools", () => {
     resetDescription: null,
     group,
   });
-  const windows = [
-    meter("gemini-5h", 300, gemini),
-    meter("gemini-weekly", 10_080, gemini),
-    meter("3p-5h", 300, thirdParty),
-    meter("3p-weekly", 10_080, thirdParty),
+  // Labels as antigravity.rs builds them: the pool's name and window, or the pool alone.
+  const antigravity = [
+    meter("gemini-5h", 300, gemini, "Gemini 5h"),
+    meter("gemini-weekly", 10_080, gemini, "Gemini Weekly"),
+    meter("3p-5h", 300, thirdParty, "Claude/GPT 5h"),
+    meter("3p-weekly", 10_080, thirdParty, "Claude/GPT Weekly"),
     meter("gemini-argon-wtu-weekly", 10_080, argon, "Gemini 4 Argon"),
   ];
+  // Claude's per-model limit shares the weekly length but keeps its own name.
+  const claude = [
+    meter("session", 300, undefined, "5h"),
+    meter("weekly", 10_080, undefined, "Weekly"),
+    meter("fable-weekly", 10_080, undefined, "Fable"),
+  ];
 
-  it("abbreviates known pools and names new ones by their last word", () => {
-    expect(poolAbbreviation("Gemini Models")).toBe("Gem");
-    expect(poolAbbreviation("Claude and GPT models")).toBe("C/G");
-    expect(poolAbbreviation("Gemini 4 Argon")).toBe("Argon");
-    expect(poolAbbreviation("Nova models")).toBe("Nova");
+  it("names pools in plain words", () => {
+    expect(poolName("Gemini Models")).toBe("Gemini");
+    expect(poolName("Claude and GPT models")).toBe("Claude/GPT");
+    expect(poolName("Gemini 4 Argon")).toBe("Gemini 4 Argon");
+    expect(poolName("Nova models")).toBe("Nova");
   });
 
-  it("labels row meters by pool and window, or by pool alone", () => {
-    expect(windows.map((window) => denseLabel(window, windows))).toEqual([
-      "Gem 5h",
-      "Gem wk",
-      "C/G 5h",
-      "C/G wk",
-      "Argon",
+  it("labels row meters by pool and cadence, or by cadence alone", () => {
+    expect(antigravity.map(rowLabel)).toEqual([
+      "Gemini 5h",
+      "Gemini wk",
+      "Claude/GPT 5h",
+      "Claude/GPT wk",
+      "Gemini 4 Argon wk",
     ]);
-    expect(denseLabel(snapshot.windows[1]!, snapshot.windows)).toBe("wk");
-    expect(denseLabel(snapshot.windows[0]!, snapshot.windows)).toBe("5h");
+    expect(claude.map(rowLabel)).toEqual(["5h", "wk", "Fable"]);
   });
 
-  it("groups consecutive windows of a pool for the detail pane", () => {
-    expect(
-      windowGroups(windows).map(({ group, windows }) => [
-        group?.name,
-        windows.map(windowName),
-      ]),
-    ).toEqual([
-      ["Gemini Models", ["5h", "Weekly"]],
-      ["Claude and GPT models", ["5h", "Weekly"]],
-      ["Gemini 4 Argon", ["Weekly"]],
+  it("labels detail entries with the cadence spelled out", () => {
+    expect(antigravity.map(detailLabel)).toEqual([
+      "Gemini · 5h",
+      "Gemini · Weekly",
+      "Claude/GPT · 5h",
+      "Claude/GPT · Weekly",
+      "Gemini 4 Argon · Weekly",
     ]);
-    expect(windowGroups(snapshot.windows).map(({ group }) => group)).toEqual([
+    expect(claude.map(detailLabel)).toEqual(["5h", "Weekly", "Fable"]);
+  });
+
+  it("keeps the name of a pooled window of any other length", () => {
+    const hourly = meter(
+      "nova-1h",
+      60,
+      { name: "Nova models", models: null },
+      "Nova 1h",
+    );
+    const lone = meter(
+      "nova",
       null,
-      null,
+      { name: "Nova models", models: null },
+      "Nova",
+    );
+    expect([rowLabel(hourly), detailLabel(hourly)]).toEqual([
+      "Nova 1h",
+      "Nova · 1h",
+    ]);
+    expect([rowLabel(lone), detailLabel(lone)]).toEqual(["Nova", "Nova"]);
+  });
+
+  it("counts down to a reset", () => {
+    const at = (minutes: number): string =>
+      formatResetCountdown(minutes * 60_000, 0);
+    expect([
+      at(45),
+      at(3 * 60 + 54),
+      at((5 * 24 + 1) * 60 + 30),
+      at(0),
+    ]).toEqual(["45m", "3h 54m", "5d 1h", "now"]);
+  });
+
+  it("says how old a reading is", () => {
+    expect(formatAge(0, 2 * 60_000 + 59_000)).toBe("Updated 2m ago");
+    expect(formatAge(0, 30_000)).toBe("Updated just now");
+  });
+
+  it("shows an integer percent, used or remaining", () => {
+    const window = { ...claude[0]!, usedPercent: 17.4 };
+    expect(displayPercent(window, "used")).toBe(17);
+    expect(displayPercent(window, "remaining")).toBe(83);
+    expect(displayPercent({ ...window, usedPercent: 140 }, "remaining")).toBe(
+      0,
+    );
+  });
+
+  it("colors by use at the notification thresholds", () => {
+    expect([0, 49, 50, 84, 85, 89, 90, 100].map(severity)).toEqual([
+      "low",
+      "low",
+      "medium",
+      "medium",
+      "high",
+      "high",
+      "critical",
+      "critical",
     ]);
   });
 });
