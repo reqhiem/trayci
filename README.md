@@ -1,10 +1,6 @@
 <p align="center">
-  <img src="resources/icons/128x128.png" width="96" height="96" alt="Trayci icon">
+  <img src="site/public/og.png" width="880" alt="Trayci: Claude Code, Codex, and Antigravity usage, one click away. The popover lists each provider with a meter per quota window and when the tightest one resets.">
 </p>
-
-<h1 align="center">Trayci</h1>
-
-<p align="center">Claude Code, Codex, and Antigravity usage, one click away.</p>
 
 <p align="center">
   <a href="https://github.com/reqhiem/trayci/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/reqhiem/trayci/actions/workflows/ci.yml/badge.svg"></a>
@@ -18,16 +14,14 @@
   <a href="COMPATIBILITY.md">Compatibility</a>
 </p>
 
-<p align="center">
-  <img src="site/public/screens/showcase.png" width="880" alt="The Trayci popover under its tray icon, listing Antigravity, Claude, and Codex quota meters with the Claude detail pane pinned, beside the light theme">
-</p>
-
-Trayci is a local-first system tray app for Linux and Windows. It shows how much of each Claude Code, Codex, and Google Antigravity quota window you have used and when it resets, in a popover one click from the tray. It reuses each provider CLI's existing sign-in and never stores credentials.
+Trayci is a local-first system tray app for Linux and Windows. It shows how much of each Claude Code, Codex, and Google Antigravity quota window you have used and when it resets, in a popover one click from the tray, or with `trayci` in a terminal. It reuses each provider CLI's existing sign-in and never stores credentials.
 
 ## Features
 
 - **Every provider at a glance.** Claude Code, Codex, and Antigravity side by side, sorted by the limit closest to running out or in the order you choose.
+- **Only what you need.** How much is left and when it resets. Meters stay grey until a quota needs attention, then turn amber, orange, and red.
 - **Detailed or compact.** Detailed shows every window as a meter; compact shows each provider's tightest one. Hover a provider to open its detail pane, click to pin it.
+- **In your terminal too.** `trayci` shows the same usage as a terminal view on Linux; the app itself lives in the tray.
 - **Reset countdowns** for every window, including every Antigravity quota pool: the 5-hour and weekly limits for Gemini and Claude/GPT models, and any pool agy adds, such as Gemini 4 Argon.
 - **Opt-in notifications** when a quota reaches 50, 85, or 90 percent, and when a reset completes.
 - **Your way:** used or remaining percentages, light, dark, or system theme, and four text sizes.
@@ -59,10 +53,10 @@ AppImage, on any distribution:
 
 ```bash
 chmod +x Trayci_*_amd64.AppImage
-./Trayci_*_amd64.AppImage
+./Trayci_*_amd64.AppImage tray
 ```
 
-Debian or Ubuntu:
+Debian or Ubuntu, then open Trayci from your app menu or run `trayci tray`:
 
 ```bash
 sudo apt install ./Trayci_*_amd64.deb
@@ -86,19 +80,22 @@ Credentials are only read, never copied or written. On Linux, settings and a cre
 
 **Wayland.** The popover can be dragged, but only an X11 session remembers where it was left: GTK lets no Wayland client place its own window, so it reopens wherever the compositor puts it. Running `GDK_BACKEND=x11 trayci` is **not** a workaround — under XWayland the popover never takes input focus and the first click dismisses it instead of reaching the button.
 
-**Windows.** `trayci.exe` is a GUI app, so an unpiped run does not make the shell wait: the output lands after the prompt and no exit code is recorded. Pipe it or wait on it to get both: `trayci.exe usage --json | ConvertFrom-Json` in PowerShell, `start /wait trayci.exe usage` in `cmd`.
+**Windows.** `trayci.exe` is a GUI app, so an unpiped run does not make the shell wait: the output lands after the prompt and no exit code is recorded. Pipe it or wait on it to get both: `trayci.exe usage --json | ConvertFrom-Json` in PowerShell, `start /wait trayci.exe usage` in `cmd`. For the same reason the terminal view is Linux-only for now: on Windows, `trayci` with no arguments starts the tray app.
 
 Tested distributions and desktops are listed in [COMPATIBILITY.md](COMPATIBILITY.md).
 
 ## Command line
 
-The installed binary answers diagnostics without opening the tray:
+In a terminal, `trayci` shows your usage in place: `r` refreshes, `c` switches detailed and compact, `u` flips used and remaining, `q` quits. It paints from the tray app's cache first, then fetches once. The tray app itself starts from your app menu, at login, or with `trayci tray`, which returns your prompt at once.
 
 ```bash
+trayci                     # usage in this terminal (Linux)
+trayci tray                # start the tray app
 trayci usage --json        # every provider, as JSON
 trayci usage antigravity   # one provider
 trayci doctor              # which provider CLIs are installed and signed in
 trayci --version
+trayci --help
 ```
 
 ## Development
@@ -110,12 +107,13 @@ pnpm install
 pnpm dev
 ```
 
-| Task                    | Command                                                                |
-| ----------------------- | ---------------------------------------------------------------------- |
-| Format, lint, typecheck | `pnpm format:check`, `pnpm lint`, `pnpm typecheck` (or `make check`)   |
-| Tests                   | `pnpm test`, `cargo test --workspace` in `src-tauri/` (or `make test`) |
-| Installers              | `pnpm dist:linux`, `pnpm dist:win`                                     |
-| Diagnostics from source | `pnpm cli -- usage --json`, `pnpm cli -- doctor`                       |
+| Task                       | Command                                                                |
+| -------------------------- | ---------------------------------------------------------------------- |
+| Format, lint, typecheck    | `pnpm format:check`, `pnpm lint`, `pnpm typecheck` (or `make check`)   |
+| Tests                      | `pnpm test`, `cargo test --workspace` in `src-tauri/` (or `make test`) |
+| Installers                 | `pnpm dist:linux`, `pnpm dist:win`                                     |
+| Terminal view, from source | `pnpm cli`                                                             |
+| Diagnostics from source    | `pnpm cli -- usage --json`, `pnpm cli -- doctor`                       |
 
 Lefthook formats staged files with Prettier before each commit. Run `pnpm exec lefthook install` if the hook is missing.
 

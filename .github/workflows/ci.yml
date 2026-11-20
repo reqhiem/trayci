@@ -46,9 +46,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
         working-directory: src-tauri
-      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo clippy --workspace --all-targets -- -D warnings
         working-directory: src-tauri
-      - run: cargo test
+      - run: cargo test --workspace
         working-directory: src-tauri
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v6
