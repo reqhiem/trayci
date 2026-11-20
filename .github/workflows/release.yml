@@ -9,7 +9,11 @@ permissions:
 
 jobs:
   build-linux:
-    runs-on: ubuntu-latest
+    # The AppImage bundles the build host's libraries, so its glibc is the oldest one it runs on.
+    # ubuntu-latest moved to 26.04 (glibc 2.43) and v0.5.0's AppImage stopped starting on 24.04 /
+    # Mint 22. Pinned to the image v0.4.6 shipped from.
+    # ponytail: 24.04 floor (glibc 2.39); an older pinned image widens it if 22.04 users ask.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - name: Install Tauri system dependencies
