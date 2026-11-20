@@ -33,7 +33,7 @@ jobs:
       - run: pnpm build
 
   rust-linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # matches release.yml's build-linux
     steps:
       - uses: actions/checkout@v6
       - name: Install Tauri system dependencies
