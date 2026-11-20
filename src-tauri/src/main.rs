@@ -24,7 +24,55 @@ fn main() {
         print!("{output}");
         std::process::exit(code);
     }
+    // ponytail: Windows keeps launching the tray for every other invocation: the GUI-subsystem exe
+    // cannot hold an interactive terminal, so a console `trayci-cli.exe` is the follow-up for a
+    // Windows terminal view.
+    #[cfg(unix)]
+    {
+        use std::io::IsTerminal;
+        let interactive = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+        if args.is_empty() && interactive {
+            let mut repository = trayci_core::SettingsRepository::default();
+            let settings = tauri::async_runtime::block_on(repository.load());
+            let providers =
+                app::providers(std::sync::Arc::new(std::sync::Mutex::new(settings.clone())));
+            if let Err(error) = trayci_core::tui::run(providers, &settings) {
+                eprintln!("trayci: {error}");
+                std::process::exit(1);
+            }
+            std::process::exit(0);
+        }
+        // Debug builds stay in the foreground so `pnpm dev` keeps the app it watches.
+        if args.first().is_some_and(|arg| arg == "tray") && interactive && !cfg!(debug_assertions) {
+            detach();
+        }
+    }
     app::run();
+}
+
+/// Start the tray app without the terminal and return the prompt at once. Its own process group
+/// keeps Ctrl-C and the shell's hangup away from it.
+#[cfg(unix)]
+fn detach() -> ! {
+    use std::os::unix::process::CommandExt;
+    use std::process::{Command, Stdio};
+
+    let spawned = autostart::executable().and_then(|executable| {
+        Command::new(executable)
+            .arg("tray")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .process_group(0)
+            .spawn()
+    });
+    match spawned {
+        Ok(_) => std::process::exit(0),
+        Err(error) => {
+            eprintln!("trayci: could not start the tray app: {error}");
+            std::process::exit(1);
+        }
+    }
 }
 
 /// Borrow the shell's console for CLI output, unless stdout is already piped or redirected.

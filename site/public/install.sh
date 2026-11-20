@@ -196,7 +196,7 @@ main() {
     # stdin is this script under `curl | sh`; apt must not read the rest of it.
     $sudo apt-get install -y --allow-downgrades "${staging}/${asset}" </dev/null || fail "apt-get could not install ${asset}"
     printf '\n  %sInstalled Trayci %s%s\n\n' "$green" "$version" "$reset" >&2
-    printf '  Open %sTrayci%s from your app menu, or run %snohup trayci >/dev/null 2>&1 &%s.\n\n' "$bold" "$reset" "$bold" "$reset"
+    printf '  Open %sTrayci%s from your app menu or run %strayci tray%s; %strayci%s shows usage right here.\n\n' "$bold" "$reset" "$bold" "$reset" "$bold" "$reset"
     return
   fi
 
@@ -214,8 +214,8 @@ main() {
     printf '  %sThe .deb is installed too, at /usr/bin/trayci. Remove one so only one runs.%s\n' "$yellow" "$reset" >&2
   fi
   case ":${PATH}:" in
-    *":${bin_dir}:"*) printf '  Run %snohup trayci >/dev/null 2>&1 &%s to put it in your tray.\n\n' "$bold" "$reset" ;;
-    *) printf '  Add %s to your PATH, then run %snohup trayci >/dev/null 2>&1 &%s.\n\n' "$bin_dir" "$bold" "$reset" ;;
+    *":${bin_dir}:"*) printf '  Run %strayci tray%s to put it in your tray, or %strayci%s to see usage right here.\n\n' "$bold" "$reset" "$bold" "$reset" ;;
+    *) printf '  Add %s to your PATH, then run %strayci tray%s (tray) or %strayci%s (terminal view).\n\n' "$bin_dir" "$bold" "$reset" "$bold" "$reset" ;;
   esac
 }
 

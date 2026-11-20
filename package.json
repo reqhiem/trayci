@@ -10,7 +10,7 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "dev": "tauri dev",
+    "dev": "tauri dev -- -- tray",
     "dev:vite": "vite",
     "build": "pnpm typecheck && vite build",
     "cli": "cargo run --manifest-path src-tauri/Cargo.toml --quiet --",

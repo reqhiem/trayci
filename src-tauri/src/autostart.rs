@@ -11,6 +11,15 @@ fn path() -> PathBuf {
         .join("autostart/trayci.desktop")
 }
 
+/// This executable as a new process should start it: the AppImage itself rather than its mount,
+/// which goes away with the process that mounted it.
+#[cfg(unix)]
+pub fn executable() -> io::Result<std::path::PathBuf> {
+    std::env::var_os("APPIMAGE")
+        .map(std::path::PathBuf::from)
+        .map_or_else(std::env::current_exe, Ok)
+}
+
 #[cfg(target_os = "linux")]
 pub async fn set_enabled(enabled: bool) -> io::Result<()> {
     use tokio::io::AsyncWriteExt;
@@ -23,17 +32,14 @@ pub async fn set_enabled(enabled: bool) -> io::Result<()> {
         };
     }
 
-    let executable = std::env::var_os("APPIMAGE")
-        .map(PathBuf::from)
-        .map(Ok)
-        .unwrap_or_else(std::env::current_exe)?;
+    let executable = executable()?;
     let escaped = executable
         .to_string_lossy()
         .replace('\\', "\\\\")
         .replace('"', "\\\"")
         .replace('%', "%%");
     let contents = format!(
-        "[Desktop Entry]\nType=Application\nName=Trayci\nComment=AI coding usage in your system tray\nExec=\"{escaped}\"\nTerminal=false\nX-GNOME-Autostart-enabled=true\n"
+        "[Desktop Entry]\nType=Application\nName=Trayci\nComment=AI coding usage in your system tray\nExec=\"{escaped}\" tray\nTerminal=false\nX-GNOME-Autostart-enabled=true\n"
     );
     let parent = path.parent().expect("autostart path has a parent");
     tokio::fs::create_dir_all(parent).await?;
@@ -61,7 +67,7 @@ pub async fn set_enabled(enabled: bool) -> io::Result<()> {
         };
     }
     let executable = std::env::current_exe()?;
-    key.set_value("Trayci", &format!("\"{}\"", executable.display()))
+    key.set_value("Trayci", &format!("\"{}\" tray", executable.display()))
 }
 
 #[cfg(not(any(target_os = "linux", windows)))]

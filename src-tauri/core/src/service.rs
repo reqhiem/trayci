@@ -366,56 +366,24 @@ impl UsageService {
                 inner.next_retry.remove(provider.id());
                 snapshot.normalize()
             }
-            Err(error) if error.kind == ProviderErrorKind::Aborted => {
-                previous.unwrap_or_else(|| {
-                    empty_snapshot(
-                        provider,
-                        UsageStatus::Error,
-                        Some("Usage unavailable".into()),
-                        now,
-                    )
-                })
-            }
             Err(error) => {
-                let definitive = matches!(
-                    error.kind,
-                    ProviderErrorKind::NotInstalled | ProviderErrorKind::NotAuthenticated
-                );
-                let mut inner = self.inner.lock().await;
-                if definitive {
-                    inner.failures.remove(provider.id());
-                    inner.next_retry.remove(provider.id());
-                } else {
-                    let count = inner.failures.entry(provider.id().into()).or_default();
-                    *count += 1;
-                    let retry_at = error.retry_at.unwrap_or_else(|| {
-                        now + BACKOFF_MS[(*count - 1).min(BACKOFF_MS.len() - 1)]
-                    });
-                    inner
-                        .next_retry
-                        .insert(provider.id().into(), (retry_at, error.retry_at.is_some()));
-                }
-                match previous.filter(|snapshot| {
-                    !definitive
-                        && !snapshot.windows.is_empty()
-                        && now.saturating_sub(snapshot.updated_at) <= MAX_STALE_RETENTION_MS
-                }) {
-                    Some(mut snapshot) => {
-                        snapshot.status = UsageStatus::Stale;
-                        snapshot.error = Some(public_error(error.kind).into());
-                        snapshot
+                if error.kind != ProviderErrorKind::Aborted {
+                    let mut inner = self.inner.lock().await;
+                    if is_definitive(error.kind) {
+                        inner.failures.remove(provider.id());
+                        inner.next_retry.remove(provider.id());
+                    } else {
+                        let count = inner.failures.entry(provider.id().into()).or_default();
+                        *count += 1;
+                        let retry_at = error.retry_at.unwrap_or_else(|| {
+                            now + BACKOFF_MS[(*count - 1).min(BACKOFF_MS.len() - 1)]
+                        });
+                        inner
+                            .next_retry
+                            .insert(provider.id().into(), (retry_at, error.retry_at.is_some()));
                     }
-                    None => empty_snapshot(
-                        provider,
-                        if definitive {
-                            UsageStatus::Unavailable
-                        } else {
-                            UsageStatus::Error
-                        },
-                        Some(public_error(error.kind).into()),
-                        now,
-                    ),
                 }
+                failed_snapshot(provider, previous, error.kind, now)
             }
         };
         self.inner
@@ -457,16 +425,7 @@ impl UsageService {
     }
 
     fn enabled_provider_ids(&self) -> Vec<String> {
-        let settings = (self.settings)();
-        [
-            ("claude", settings.providers.claude.enabled),
-            ("codex", settings.providers.codex.enabled),
-            ("antigravity", settings.providers.antigravity.enabled),
-        ]
-        .into_iter()
-        .filter(|(_, enabled)| *enabled)
-        .map(|(id, _)| id.into())
-        .collect()
+        enabled_provider_ids(&(self.settings)())
     }
 
     async fn emit(&self) {
@@ -501,7 +460,68 @@ impl Drop for Subscription {
     }
 }
 
-fn empty_snapshot(
+fn is_definitive(kind: ProviderErrorKind) -> bool {
+    matches!(
+        kind,
+        ProviderErrorKind::NotInstalled | ProviderErrorKind::NotAuthenticated
+    )
+}
+
+/// What a provider shows after a failed fetch: a cancelled one keeps its last reading, a transient
+/// failure keeps recent meters marked stale with the error, anything else is the error alone.
+pub(crate) fn failed_snapshot(
+    provider: &dyn UsageProvider,
+    previous: Option<ProviderUsageSnapshot>,
+    kind: ProviderErrorKind,
+    now: u64,
+) -> ProviderUsageSnapshot {
+    if kind == ProviderErrorKind::Aborted {
+        return previous.unwrap_or_else(|| {
+            empty_snapshot(
+                provider,
+                UsageStatus::Error,
+                Some("Usage unavailable".into()),
+                now,
+            )
+        });
+    }
+    let definitive = is_definitive(kind);
+    match previous.filter(|snapshot| {
+        !definitive
+            && !snapshot.windows.is_empty()
+            && now.saturating_sub(snapshot.updated_at) <= MAX_STALE_RETENTION_MS
+    }) {
+        Some(mut snapshot) => {
+            snapshot.status = UsageStatus::Stale;
+            snapshot.error = Some(public_error(kind).into());
+            snapshot
+        }
+        None => empty_snapshot(
+            provider,
+            if definitive {
+                UsageStatus::Unavailable
+            } else {
+                UsageStatus::Error
+            },
+            Some(public_error(kind).into()),
+            now,
+        ),
+    }
+}
+
+pub(crate) fn enabled_provider_ids(settings: &TrayciSettings) -> Vec<String> {
+    [
+        ("claude", settings.providers.claude.enabled),
+        ("codex", settings.providers.codex.enabled),
+        ("antigravity", settings.providers.antigravity.enabled),
+    ]
+    .into_iter()
+    .filter(|(_, enabled)| *enabled)
+    .map(|(id, _)| id.into())
+    .collect()
+}
+
+pub(crate) fn empty_snapshot(
     provider: &dyn UsageProvider,
     status: UsageStatus,
     error: Option<String>,

@@ -5,6 +5,8 @@ pub mod notify;
 pub mod providers;
 pub mod service;
 pub mod settings;
+#[cfg(unix)]
+pub mod tui;
 
 pub use cache::CacheRepository;
 pub use model::*;
