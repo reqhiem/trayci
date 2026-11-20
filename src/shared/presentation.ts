@@ -102,9 +102,9 @@ function cadence(window: UsageWindow, weekly: string): string {
   if (window.durationMinutes === 300) return "5h";
   if (window.durationMinutes === 10_080) return weekly;
   const pool = poolName(window.group.name);
-  return window.label.startsWith(`${pool} `)
-    ? window.label.slice(pool.length + 1)
-    : "";
+  if (window.label.startsWith(`${pool} `))
+    return window.label.slice(pool.length + 1);
+  return window.label === pool ? "" : window.label;
 }
 
 /** A meter in a provider row: "Gemini 5h", "Claude/GPT wk", "Gemini 4 Argon wk", "5h", "Fable". */
@@ -130,10 +130,14 @@ export function displayPercent(
   return Math.round(mode === "used" ? used : 100 - used);
 }
 
-/** How much attention a meter needs, at the notification thresholds (50/85/90). Always by use. */
+/**
+ * How much attention a meter needs, at the notification thresholds (50/85/90). Always by use, and
+ * on the rounded number, so a window shown as "90%" is red even at 89.6%.
+ */
 export function severity(
   usedPercent: number,
 ): "low" | "medium" | "high" | "critical" {
+  usedPercent = Math.round(usedPercent);
   if (usedPercent >= 90) return "critical";
   if (usedPercent >= 85) return "high";
   if (usedPercent >= 50) return "medium";

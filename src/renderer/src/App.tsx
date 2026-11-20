@@ -69,11 +69,18 @@ function ProviderIcon({
 }
 
 /** A bar that always shows use, colored by how much attention it needs. */
-function Meter({ window }: { window: UsageWindow }): React.JSX.Element {
+function Meter({
+  window,
+  title,
+}: {
+  window: UsageWindow;
+  title?: string;
+}): React.JSX.Element {
   const used = Math.min(100, Math.max(0, window.usedPercent));
   return (
     <span
       className={`meter meter-${severity(used)}`}
+      title={title}
       role="progressbar"
       aria-label={`${detailLabel(window)} used`}
       aria-valuemin={0}
@@ -184,7 +191,7 @@ function ProviderRow({
         ) : null}
         {compact && tightest ? (
           <>
-            <Meter window={tightest} />
+            <Meter window={tightest} title={detailLabel(tightest)} />
             <Percent window={tightest} mode={settings.percentageDisplay} />
           </>
         ) : null}
@@ -240,6 +247,9 @@ function ProviderDetail({
             className="mode-toggle"
             type="button"
             title={mode === "used" ? "Show remaining" : "Show used"}
+            aria-label={
+              mode === "used" ? "Used, show remaining" : "Remaining, show used"
+            }
             onClick={() =>
               update({
                 percentageDisplay: mode === "used" ? "remaining" : "used",

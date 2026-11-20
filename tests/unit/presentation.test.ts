@@ -223,6 +223,16 @@ describe("vocabulary", () => {
       "Nova · 1h",
     ]);
     expect([rowLabel(lone), detailLabel(lone)]).toEqual(["Nova", "Nova"]);
+    const odd = meter(
+      "odd",
+      60,
+      { name: "Nova models", models: null },
+      "Burst",
+    );
+    expect([rowLabel(odd), detailLabel(odd)]).toEqual([
+      "Nova Burst",
+      "Nova · Burst",
+    ]);
   });
 
   it("counts down to a reset", () => {
@@ -251,7 +261,7 @@ describe("vocabulary", () => {
   });
 
   it("colors by use at the notification thresholds", () => {
-    expect([0, 49, 50, 84, 85, 89, 90, 100].map(severity)).toEqual([
+    expect([0, 49, 50, 84, 85, 89, 89.6, 100].map(severity)).toEqual([
       "low",
       "low",
       "medium",

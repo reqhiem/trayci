@@ -222,6 +222,10 @@ h1 {
 .provider-row[aria-expanded="true"] {
   background: var(--tint);
 }
+/* Pinned, as opposed to only hovered: the row keeps a mark at its edge. */
+.provider-row[aria-expanded="true"] {
+  box-shadow: inset 2px 0 var(--muted);
+}
 .provider-summary,
 .detail-title {
   display: flex;
