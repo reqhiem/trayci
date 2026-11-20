@@ -16,9 +16,11 @@ use crossterm::{
     style::{Color, PrintStyledContent, Stylize},
     terminal::{self, ClearType},
 };
+use futures::FutureExt;
 use std::{
     collections::HashMap,
     io::{self, Write},
+    panic::AssertUnwindSafe,
     sync::{mpsc, Arc},
     time::{Duration, Instant},
 };
@@ -344,9 +346,14 @@ struct Screen;
 
 impl Screen {
     fn enter() -> io::Result<Self> {
+        // Only a panic on this thread ends the view; a provider's panic on a runtime worker is
+        // caught and shown as that provider's error.
+        let owner = std::thread::current().id();
         let previous = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |info| {
-            restore();
+            if std::thread::current().id() == owner {
+                restore();
+            }
             previous(info);
         }));
         let screen = Screen;
@@ -415,7 +422,11 @@ fn start_fetch(
                 reason: UsageFetchReason::Manual,
                 now: now_ms(),
             };
-            let _ = sender.send((index, providers[index].fetch_usage(&context).await));
+            let result = AssertUnwindSafe(providers[index].fetch_usage(&context))
+                .catch_unwind()
+                .await
+                .unwrap_or_else(|_| Err(ProviderError::new(ProviderErrorKind::Unknown, "panic")));
+            let _ = sender.send((index, result));
         });
     }
     providers.len()
