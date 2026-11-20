@@ -10,15 +10,16 @@ import type {
 } from "../../shared/types";
 import { DEFAULT_SETTINGS, FONT_SCALES } from "../../shared/types";
 import {
-  denseLabel,
+  detailLabel,
+  displayPercent,
   formatAge,
   formatResetCountdown,
   providerRank,
+  rowLabel,
+  severity,
   SOURCE_LABELS,
   statusSummary,
   tightestWindow,
-  windowGroups,
-  windowName,
 } from "../../shared/presentation";
 import { trayci } from "./bridge";
 
@@ -31,14 +32,6 @@ const EMPTY_STATE: UsageState = {
 
 function maximum(snapshot: ProviderUsageSnapshot): number {
   return Math.max(0, ...snapshot.windows.map((window) => window.usedPercent));
-}
-
-function displayPercent(
-  window: UsageWindow,
-  mode: TrayciSettings["percentageDisplay"],
-): number {
-  const used = Math.min(100, Math.max(0, window.usedPercent));
-  return Math.round(mode === "used" ? used : 100 - used);
 }
 
 function ProviderIcon({
@@ -75,62 +68,79 @@ function ProviderIcon({
   );
 }
 
-function Metric({
+/** A bar that always shows use, colored by how much attention it needs. */
+function Meter({
   window,
-  label,
-  settings,
-  now,
-  dense = false,
+  title,
 }: {
   window: UsageWindow;
-  label: string;
-  settings: TrayciSettings;
-  now: number;
-  dense?: boolean;
+  title?: string;
 }): React.JSX.Element {
   const used = Math.min(100, Math.max(0, window.usedPercent));
-  const value = displayPercent(window, settings.percentageDisplay);
-  const progressClass =
-    used < 50
-      ? "progress-low"
-      : used < 85
-        ? "progress-medium"
-        : used < 90
-          ? "progress-high"
-          : "progress-critical";
-
   return (
-    <div className={dense ? "metric metric-dense" : "metric"}>
-      <div className="metric-copy">
-        <strong>{label}</strong>
-      </div>
-      <div className="metric-line">
-        <div
-          className={`progress ${progressClass}`}
-          role="progressbar"
-          aria-label={`${window.label} usage`}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={Math.round(used)}
-        >
-          <span style={{ width: `${used}%` }} />
-        </div>
-        <strong>{value}%</strong>
-      </div>
-      {!dense ? (
-        <div className="metric-meta">
-          <span>
-            {value}% {settings.percentageDisplay}
-          </span>
-          <span>
-            {window.resetsAt
-              ? `Resets in ${formatResetCountdown(window.resetsAt, now)}`
-              : "—"}
-          </span>
-        </div>
-      ) : null}
-    </div>
+    <span
+      className={`meter meter-${severity(used)}`}
+      title={title}
+      role="progressbar"
+      aria-label={`${detailLabel(window)} used`}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(used)}
+    >
+      <span style={{ width: `${used}%` }} />
+    </span>
   );
+}
+
+/** The number beside a meter. Red once the window is nearly spent, whichever way it counts. */
+function Percent({
+  window,
+  mode,
+}: {
+  window: UsageWindow;
+  mode: TrayciSettings["percentageDisplay"];
+}): React.JSX.Element {
+  return (
+    <span
+      className={
+        severity(window.usedPercent) === "critical"
+          ? "percent critical"
+          : "percent"
+      }
+    >
+      {displayPercent(window, mode)}%
+    </span>
+  );
+}
+
+/**
+ * Where each row meter sits: two per line, left then right, so the bars of a column line up. A
+ * label too long for half the row is never cut; it takes the whole line instead.
+ */
+const WIDE_LABEL = 14; // characters; "Claude/GPT wk" still fits half the row at any zoom.
+function meterSlots(windows: readonly UsageWindow[]): {
+  window: UsageWindow;
+  label: string;
+  slot: "left" | "right" | "wide";
+  line: number;
+}[] {
+  let line = 0;
+  let right = false;
+  return windows.map((window) => {
+    const label = rowLabel(window);
+    if (label.length > WIDE_LABEL) {
+      right = false;
+      return { window, label, slot: "wide", line: ++line };
+    }
+    const slot = right ? "right" : "left";
+    if (!right) line++;
+    right = !right;
+    return { window, label, slot, line };
+  });
+}
+
+function Plan({ plan }: { plan: string | null }): React.JSX.Element | null {
+  return plan ? <span className="plan">{plan}</span> : null;
 }
 
 function ProviderRow({
@@ -148,11 +158,18 @@ function ProviderRow({
   onPin(): void;
   onReveal(): void;
 }): React.JSX.Element {
+  const compact = settings.displayMode === "compact";
   const tightest = tightestWindow(snapshot);
+  // statusSummary keeps the age check from #54: an aged reading never shows a healthy countdown.
   const summary = statusSummary(snapshot, now);
+  const message = snapshot.windows.length
+    ? null
+    : snapshot.status === "fetching"
+      ? "Loading…"
+      : (snapshot.error ?? "Usage unavailable");
   return (
     <button
-      className={`provider-row provider-${snapshot.status}`}
+      className={`provider-row provider-${snapshot.status}${compact ? " provider-row-compact" : ""}`}
       type="button"
       aria-busy={snapshot.status === "fetching"}
       aria-expanded={pinned}
@@ -160,49 +177,44 @@ function ProviderRow({
       onMouseEnter={onReveal}
       onFocus={onReveal}
     >
-      <div className="provider-summary">
+      <span className="provider-summary">
         <ProviderIcon provider={snapshot.provider} />
         <strong>{snapshot.displayName}</strong>
-        {settings.displayMode === "compact" && tightest ? (
-          <span className="compact-value">
-            {summary?.stale
+        <Plan plan={snapshot.plan} />
+        <span className="spacer" />
+        {summary ? (
+          <span className={summary.stale ? "summary stale" : "summary"}>
+            {summary.stale || compact
               ? summary.text
-              : tightest.resetsAt
-                ? formatResetCountdown(tightest.resetsAt, now)
-                : tightest.label}
-            <strong>
-              {displayPercent(tightest, settings.percentageDisplay)}%
-            </strong>
-          </span>
-        ) : summary ? (
-          <span className={summary.stale ? "status" : "reset-summary"}>
-            {summary.text}
+              : `resets in ${summary.text}`}
           </span>
         ) : null}
+        {compact && tightest ? (
+          <>
+            <Meter window={tightest} title={detailLabel(tightest)} />
+            <Percent window={tightest} mode={settings.percentageDisplay} />
+          </>
+        ) : null}
+        {compact && message ? <span className="summary">{message}</span> : null}
         <span className="chevron" aria-hidden="true" />
-      </div>
-      {settings.displayMode === "detailed" && snapshot.windows.length ? (
-        <div
-          className={`inline-metrics${snapshot.windows.length > 2 ? " inline-metrics-grid" : ""}`}
-        >
-          {snapshot.windows.map((window) => (
-            <Metric
+      </span>
+      {!compact && snapshot.windows.length ? (
+        <span className="row-meters">
+          {meterSlots(snapshot.windows).map(({ window, label, slot, line }) => (
+            <span
+              className={`row-meter slot-${slot}`}
               key={window.id}
-              window={window}
-              label={denseLabel(window, snapshot.windows)}
-              settings={settings}
-              now={now}
-              dense
-            />
+              style={{ "--line": line } as React.CSSProperties}
+            >
+              <span className="row-meter-label">{label}</span>
+              <Meter window={window} />
+              <Percent window={window} mode={settings.percentageDisplay} />
+            </span>
           ))}
-        </div>
-      ) : null}
-      {!snapshot.windows.length ? (
-        <span className="provider-message">
-          {snapshot.status === "fetching"
-            ? "Loading usage…"
-            : (snapshot.error ?? "Usage unavailable")}
         </span>
+      ) : null}
+      {!compact && message ? (
+        <span className="provider-message">{message}</span>
       ) : null}
     </button>
   );
@@ -212,13 +224,14 @@ function ProviderDetail({
   snapshot,
   settings,
   now,
-  pinned,
+  update,
 }: {
   snapshot: ProviderUsageSnapshot;
   settings: TrayciSettings;
   now: number;
-  pinned: boolean;
+  update(patch: TrayciSettingsPatch): void;
 }): React.JSX.Element {
+  const mode = settings.percentageDisplay;
   return (
     <aside
       className="provider-detail"
@@ -228,52 +241,53 @@ function ProviderDetail({
         <div className="detail-title">
           <ProviderIcon provider={snapshot.provider} />
           <strong>{snapshot.displayName}</strong>
-          {snapshot.plan ? <span className="plan">{snapshot.plan}</span> : null}
+          <Plan plan={snapshot.plan} />
+          <span className="spacer" />
+          <button
+            className="mode-toggle"
+            type="button"
+            title={mode === "used" ? "Show remaining" : "Show used"}
+            aria-label={
+              mode === "used" ? "Used, show remaining" : "Remaining, show used"
+            }
+            onClick={() =>
+              update({
+                percentageDisplay: mode === "used" ? "remaining" : "used",
+              })
+            }
+          >
+            {mode === "used" ? "Used" : "Remaining"}
+            <span aria-hidden="true"> ⇅</span>
+          </button>
         </div>
-        <span>
-          {formatAge(snapshot.updatedAt, now, "just now")}
-          {snapshot.source ? ` · ${SOURCE_LABELS[snapshot.source]}` : ""}
-          {pinned ? " · pinned" : ""}
+        <span
+          className="detail-age"
+          title={snapshot.source ? SOURCE_LABELS[snapshot.source] : undefined}
+        >
+          {formatAge(snapshot.updatedAt, now)}
         </span>
       </header>
-      <div className="detail-metrics">
-        {windowGroups(snapshot.windows).map(({ group, windows }) =>
-          group ? (
-            <section
-              className="pool"
-              key={group.name}
-              aria-label={`${group.name} quota`}
-            >
-              <header className="pool-header">
-                <strong>{group.name}</strong>
-                {group.models ? <span>{group.models}</span> : null}
-              </header>
-              {windows.map((window) => (
-                <Metric
-                  key={window.id}
-                  window={window}
-                  label={windowName(window)}
-                  settings={settings}
-                  now={now}
-                />
-              ))}
-            </section>
-          ) : (
-            windows.map((window) => (
-              <Metric
-                key={window.id}
-                window={window}
-                label={window.label}
-                settings={settings}
-                now={now}
-              />
-            ))
-          ),
-        )}
-        {snapshot.error ? (
-          <div className="inline-error">{snapshot.error}</div>
-        ) : null}
-      </div>
+      {snapshot.windows.length ? (
+        <ul className="detail-windows">
+          {snapshot.windows.map((window) => (
+            <li key={window.id} title={window.group?.models ?? undefined}>
+              <span className="detail-line">
+                <span>
+                  <strong>{detailLabel(window)}</strong>
+                  {window.resetsAt
+                    ? ` · resets in ${formatResetCountdown(window.resetsAt, now)}`
+                    : null}
+                </span>
+                <Percent window={window} mode={mode} />
+              </span>
+              <Meter window={window} />
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {snapshot.error ? (
+        <div className="inline-error">{snapshot.error}</div>
+      ) : null}
     </aside>
   );
 }
@@ -369,7 +383,7 @@ function PositionRow({
 }: {
   value: [number, number] | null;
   disabled: boolean;
-  onChange(position: [number, number]): void;
+  onChange(position: [number, number] | null): void;
 }): React.JSX.Element {
   const [draft, setDraft] = useState<{ x: string; y: string } | null>(null);
   const shown = draft ?? {
@@ -387,8 +401,11 @@ function PositionRow({
     onChange([x, y]);
   };
   return (
-    <div className="setting-row">
-      <span>{disabled ? "Position (Wayland ignores it)" : "Position"}</span>
+    <div
+      className="setting-row"
+      title={disabled ? "Wayland ignores a typed position" : undefined}
+    >
+      <span>Position</span>
       <span className="position-inputs">
         {(["x", "y"] as const).map((axis) => (
           <label key={axis}>
@@ -408,6 +425,17 @@ function PositionRow({
             />
           </label>
         ))}
+        <button
+          className="row-button"
+          type="button"
+          title="Back to the tray icon"
+          onClick={() => {
+            setDraft(null);
+            onChange(null);
+          }}
+        >
+          Reset
+        </button>
       </span>
     </div>
   );
@@ -450,7 +478,7 @@ function Settings({
         <Switch
           checked={settings.startOnLogin}
           onChange={(startOnLogin) => update({ startOnLogin })}
-          label="Start Trayci on login"
+          label="Start on login"
         />
         <Switch
           checked={settings.refreshOnResume}
@@ -458,7 +486,7 @@ function Settings({
           label="Refresh after resume"
         />
         <Choice
-          label="Refresh interval"
+          label="Refresh every"
           value={settings.pollIntervalMinutes}
           options={[5, 15, 30, 60].map(
             (minutes) => [minutes, `${minutes}m`] as const,
@@ -506,7 +534,7 @@ function Settings({
                 },
               })
             }
-            label={`Quota reaches ${threshold}%`}
+            label={`${threshold}% used`}
           />
         ))}
         <Switch
@@ -514,7 +542,7 @@ function Settings({
           onChange={(reset) =>
             update({ notifications: { ...settings.notifications, reset } })
           }
-          label="Quota reset completes"
+          label="Quota resets"
         />
       </Group>
       <Group title="Providers">
@@ -558,16 +586,6 @@ function Settings({
         ))}
       </Group>
       <Group title="Window">
-        <div className="setting-row">
-          <span>Drag the title bar to move the popup (X11 sessions only)</span>
-          <button
-            className="row-button"
-            type="button"
-            onClick={() => update({ windowPosition: null })}
-          >
-            Reset position
-          </button>
-        </div>
         <PositionRow
           value={settings.windowPosition}
           disabled={!canPosition}
@@ -579,7 +597,7 @@ function Settings({
         type="button"
         onClick={() => void trayci.app.quit()}
       >
-        Quit Trayci
+        Quit
       </button>
     </div>
   );
@@ -801,13 +819,46 @@ export default function App(): React.JSX.Element {
             />
           ) : null}
           <h1>{view === "usage" ? "Usage" : "Settings"}</h1>
-          <div className="header-actions">
-            {view === "usage" ? <span>all agents</span> : null}
-            {view === "usage" ? (
+          {view === "usage" ? (
+            <>
+              <button
+                className="icon-button"
+                type="button"
+                aria-label="Compact view"
+                aria-pressed={settings.displayMode === "compact"}
+                title={
+                  settings.displayMode === "compact"
+                    ? "Detailed view"
+                    : "Compact view"
+                }
+                onClick={() =>
+                  update({
+                    displayMode:
+                      settings.displayMode === "compact"
+                        ? "detailed"
+                        : "compact",
+                  })
+                }
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d={
+                      settings.displayMode === "compact"
+                        ? "m7 15 5 5 5-5M7 9l5-5 5 5"
+                        : "m7 20 5-5 5 5M7 4l5 5 5-5"
+                    }
+                  />
+                </svg>
+              </button>
               <button
                 className="icon-button"
                 type="button"
                 aria-label="Refresh usage"
+                title={
+                  state.lastRefreshCompletedAt
+                    ? `Refresh · ${formatAge(state.lastRefreshCompletedAt, now)}`
+                    : "Refresh"
+                }
                 disabled={state.isRefreshing}
                 onClick={() =>
                   void trayci.usage
@@ -815,24 +866,35 @@ export default function App(): React.JSX.Element {
                     .catch(() => setError("Refresh failed."))
                 }
               >
-                <span
-                  className={state.isRefreshing ? "spin" : ""}
+                <svg
+                  className={state.isRefreshing ? "spin" : undefined}
+                  viewBox="0 0 24 24"
                   aria-hidden="true"
                 >
-                  ↻
-                </span>
+                  <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8M21 3v5h-5" />
+                </svg>
               </button>
-            ) : null}
-            <button
-              ref={settingsButton}
-              className="icon-button settings-button"
-              type="button"
-              aria-label={view === "usage" ? "Settings" : "Back to usage"}
-              onClick={() => setView(view === "usage" ? "settings" : "usage")}
-            >
-              {view === "usage" ? "···" : "×"}
-            </button>
-          </div>
+            </>
+          ) : null}
+          <button
+            ref={settingsButton}
+            className="icon-button"
+            type="button"
+            aria-label={view === "usage" ? "Settings" : "Back to usage"}
+            title={view === "usage" ? "Settings" : "Back to usage"}
+            onClick={() => setView(view === "usage" ? "settings" : "usage")}
+          >
+            {view === "usage" ? (
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+            )}
+          </button>
         </header>
 
         {error ? (
@@ -842,43 +904,29 @@ export default function App(): React.JSX.Element {
         ) : null}
 
         {view === "usage" ? (
-          <>
-            <div className="density" aria-label="Information density">
-              {(["detailed", "compact"] as const).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  aria-pressed={settings.displayMode === mode}
-                  onClick={() => update({ displayMode: mode })}
-                >
-                  {mode === "detailed" ? "Detailed" : "Compact"}
-                </button>
-              ))}
-            </div>
-            <div className="provider-list" aria-live="polite">
-              {providers.length ? (
-                providers.map((snapshot) => (
-                  <ProviderRow
-                    key={snapshot.provider}
-                    snapshot={snapshot}
-                    settings={settings}
-                    now={now}
-                    pinned={pinnedProvider === snapshot.provider}
-                    onReveal={() => setHoveredProvider(snapshot.provider)}
-                    onPin={() =>
-                      setPinnedProvider(
-                        pinnedProvider === snapshot.provider
-                          ? null
-                          : snapshot.provider,
-                      )
-                    }
-                  />
-                ))
-              ) : (
-                <div className="empty">No providers enabled.</div>
-              )}
-            </div>
-          </>
+          <div className="provider-list" aria-live="polite">
+            {providers.length ? (
+              providers.map((snapshot) => (
+                <ProviderRow
+                  key={snapshot.provider}
+                  snapshot={snapshot}
+                  settings={settings}
+                  now={now}
+                  pinned={pinnedProvider === snapshot.provider}
+                  onReveal={() => setHoveredProvider(snapshot.provider)}
+                  onPin={() =>
+                    setPinnedProvider(
+                      pinnedProvider === snapshot.provider
+                        ? null
+                        : snapshot.provider,
+                    )
+                  }
+                />
+              ))
+            ) : (
+              <div className="empty">No providers enabled.</div>
+            )}
+          </div>
         ) : (
           <Settings settings={settings} update={update} />
         )}
@@ -888,7 +936,7 @@ export default function App(): React.JSX.Element {
           snapshot={selected}
           settings={settings}
           now={now}
-          pinned={pinnedProvider === selected.provider}
+          update={update}
         />
       ) : null}
     </main>
