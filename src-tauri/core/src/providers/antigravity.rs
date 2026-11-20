@@ -167,7 +167,7 @@ pub fn parse_agy_version(output: &str) -> Option<(u64, u64, u64)> {
 
 /// "Gemini Models" reads "Gemini" and "Claude and GPT models" reads "Claude/GPT"; a pool named
 /// after one model ("Gemini 4 Argon") keeps its name.
-fn pool_name(group: &str) -> String {
+pub(crate) fn pool_name(group: &str) -> String {
     let trimmed = group.trim();
     let stem = trimmed
         .len()

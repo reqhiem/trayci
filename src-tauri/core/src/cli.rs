@@ -14,15 +14,33 @@ where
 }
 
 pub fn is_cli_mode(args: &[String]) -> bool {
-    args.iter()
-        .any(|arg| matches!(arg.as_str(), "usage" | "doctor" | "--version"))
+    args.iter().any(|arg| {
+        matches!(
+            arg.as_str(),
+            "usage" | "doctor" | "--version" | "--help" | "-h"
+        )
+    })
 }
+
+const HELP: &str = "\
+trayci: AI coding quota usage
+
+  trayci                         the usage view in this terminal (the tray app elsewhere)
+  trayci tray                    start the tray app
+  trayci usage [--json] [provider...]
+                                 print usage once (claude, codex, antigravity)
+  trayci doctor                  check which providers are available
+  trayci --version               print the version
+";
 
 pub async fn run_cli(
     args: &[String],
     providers: &[Box<dyn UsageProvider>],
     version: &str,
 ) -> (i32, String) {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        return (0, HELP.into());
+    }
     if args.iter().any(|arg| arg == "--version") {
         return (0, format!("{version}\n"));
     }
@@ -100,15 +118,27 @@ pub async fn run_cli(
 }
 
 pub fn format_reset(resets_at: Option<u64>, now: u64) -> String {
-    let Some(resets_at) = resets_at else {
-        return String::new();
-    };
-    let minutes = resets_at.saturating_sub(now) / 60_000;
+    match resets_at.map(|resets_at| countdown(resets_at, now)) {
+        None => String::new(),
+        Some(left) if left == "now" => "resets now".into(),
+        Some(left) => format!("resets in {left}"),
+    }
+}
+
+/// Time until `resets_at` at a glance: `45m`, `3h 54m`, `5d 1h`, or `now`.
+pub fn countdown(resets_at: u64, now: u64) -> String {
+    match resets_at.saturating_sub(now) / 60_000 {
+        0 => "now".into(),
+        minutes => format_minutes(minutes),
+    }
+}
+
+/// Minutes as the coarsest unit that still reads at a glance: `45m`, `3h 54m`, `5d 1h`.
+pub fn format_minutes(minutes: u64) -> String {
     match minutes {
-        0 => "resets now".into(),
-        1..=59 => format!("resets in {minutes}m"),
-        60..=1439 => format!("resets in {}h {}m", minutes / 60, minutes % 60),
-        _ => format!("resets in {}d {}h", minutes / 1440, minutes % 1440 / 60),
+        0..=59 => format!("{minutes}m"),
+        60..=1439 => format!("{}h {}m", minutes / 60, minutes % 60),
+        _ => format!("{}d {}h", minutes / 1440, minutes % 1440 / 60),
     }
 }
 
@@ -177,7 +207,7 @@ pub fn is_provider_id(value: &str) -> bool {
     matches!(value, "claude" | "codex" | "antigravity")
 }
 
-fn now_ms() -> u64 {
+pub(crate) fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
