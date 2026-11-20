@@ -27,7 +27,7 @@ fn main() {
     // ponytail: Windows keeps launching the tray for every other invocation: the GUI-subsystem exe
     // cannot hold an interactive terminal, so a console `trayci-cli.exe` is the follow-up for a
     // Windows terminal view.
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     {
         use std::io::IsTerminal;
         let interactive = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
@@ -52,7 +52,7 @@ fn main() {
 
 /// Start the tray app without the terminal and return the prompt at once. Its own process group
 /// keeps Ctrl-C and the shell's hangup away from it.
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn detach() -> ! {
     use std::os::unix::process::CommandExt;
     use std::process::{Command, Stdio};

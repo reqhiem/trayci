@@ -21,7 +21,10 @@ use std::{
     collections::HashMap,
     io::{self, Write},
     panic::AssertUnwindSafe,
-    sync::{mpsc, Arc},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc, Arc,
+    },
     time::{Duration, Instant},
 };
 use tokio_util::sync::CancellationToken;
@@ -407,13 +410,19 @@ fn draw(lines: &[Line]) -> io::Result<()> {
 
 type Fetched = (usize, Result<ProviderUsageSnapshot, ProviderError>);
 
+/// Fetches every provider not waiting out a `retry-after` it was given, and says how many.
 fn start_fetch(
     runtime: &tokio::runtime::Runtime,
     providers: &Arc<Vec<Box<dyn UsageProvider>>>,
+    retry_at: &HashMap<usize, u64>,
     cancellation: &CancellationToken,
     sender: &mpsc::Sender<Fetched>,
 ) -> usize {
-    for index in 0..providers.len() {
+    let now = now_ms();
+    let due = (0..providers.len())
+        .filter(|index| retry_at.get(index).map_or(true, |&at| at <= now))
+        .collect::<Vec<_>>();
+    for &index in &due {
         let (providers, cancellation, sender) =
             (Arc::clone(providers), cancellation.clone(), sender.clone());
         runtime.spawn(async move {
@@ -429,7 +438,7 @@ fn start_fetch(
             let _ = sender.send((index, result));
         });
     }
-    providers.len()
+    due.len()
 }
 
 pub fn run(providers: Vec<Box<dyn UsageProvider>>, settings: &TrayciSettings) -> io::Result<()> {
@@ -457,18 +466,41 @@ pub fn run(providers: Vec<Box<dyn UsageProvider>>, settings: &TrayciSettings) ->
     let (sender, results) = mpsc::channel::<Fetched>();
     let mut pending = 0;
     let mut fetched_at: Option<Instant> = None;
+    let mut retry_at = HashMap::new();
+    // `kill` or a closed terminal would otherwise leave the shell in raw mode.
+    let quit = Arc::new(AtomicBool::new(false));
+    runtime.spawn({
+        let quit = Arc::clone(&quit);
+        async move {
+            use tokio::signal::unix::{signal, SignalKind};
+            let (Ok(mut term), Ok(mut hangup)) = (
+                signal(SignalKind::terminate()),
+                signal(SignalKind::hangup()),
+            ) else {
+                return;
+            };
+            tokio::select! {
+                _ = term.recv() => {},
+                _ = hangup.recv() => {},
+            }
+            quit.store(true, Ordering::Relaxed);
+        }
+    });
 
     let screen = Screen::enter()?;
     loop {
         // One fetch at a time; the next only once the poll interval has passed since it finished.
         if pending == 0 && fetched_at.map_or(true, |at| at.elapsed() >= interval) {
-            pending = start_fetch(&runtime, &providers, &cancellation, &sender);
+            pending = start_fetch(&runtime, &providers, &retry_at, &cancellation, &sender);
             fetched_at = Some(Instant::now());
         }
         let (width, _) = terminal::size()?;
         let shown = ordered(snapshots.values(), &settings.provider_order);
         draw(&render(&shown, view, pending > 0, now_ms(), width.into()))?;
 
+        if quit.load(Ordering::Relaxed) {
+            break;
+        }
         if event::poll(Duration::from_millis(500))? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
@@ -490,6 +522,12 @@ pub fn run(providers: Vec<Box<dyn UsageProvider>>, settings: &TrayciSettings) ->
             if pending == 0 {
                 fetched_at = Some(Instant::now());
             }
+            match &result {
+                Err(ProviderError {
+                    retry_at: Some(at), ..
+                }) => retry_at.insert(index, *at),
+                _ => retry_at.remove(&index),
+            };
             apply(&mut snapshots, providers[index].as_ref(), result, now_ms());
         }
     }

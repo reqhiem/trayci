@@ -13,7 +13,7 @@ fn path() -> PathBuf {
 
 /// This executable as a new process should start it: the AppImage itself rather than its mount,
 /// which goes away with the process that mounted it.
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 pub fn executable() -> io::Result<std::path::PathBuf> {
     std::env::var_os("APPIMAGE")
         .map(std::path::PathBuf::from)

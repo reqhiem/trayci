@@ -5,7 +5,7 @@ pub mod notify;
 pub mod providers;
 pub mod service;
 pub mod settings;
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 pub mod tui;
 
 pub use cache::CacheRepository;
