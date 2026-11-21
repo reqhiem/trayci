@@ -27,19 +27,30 @@ pub async fn resolve_executable(name: &str, configured: Option<&Path>) -> Option
     if configured.is_some_and(executable) {
         return configured.map(Path::to_path_buf);
     }
-    let mut candidates: Vec<PathBuf> = env::var_os("PATH")
-        .map(|path| env::split_paths(&path).map(|dir| dir.join(name)).collect())
+    let mut dirs: Vec<PathBuf> = env::var_os("PATH")
+        .map(|path| env::split_paths(&path).collect())
         .unwrap_or_default();
     if let Some(home) = home_dir() {
-        candidates.extend([
-            home.join(".local/bin").join(name),
-            home.join(".npm-global/bin").join(name),
-            home.join(".bun/bin").join(name),
+        dirs.extend([
+            home.join(".local/bin"),
+            home.join(".npm-global/bin"),
+            home.join(".bun/bin"),
         ]);
     }
+    find_in_dirs(name, dirs)
+}
+
+fn find_in_dirs(name: &str, dirs: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
+    // Windows can only run `<name>.exe`; a bare `<dir>\<name>` never matches the real file, and
+    // the extensionless script npm drops next to a `.cmd` shim is not runnable.
+    let file_name = if cfg!(windows) {
+        format!("{name}.exe")
+    } else {
+        name.to_string()
+    };
     let mut seen = HashSet::new();
-    candidates
-        .into_iter()
+    dirs.into_iter()
+        .map(|dir| dir.join(&file_name))
         .find(|path| seen.insert(path.clone()) && executable(path))
 }
 
@@ -374,4 +385,82 @@ pub fn title_case(value: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The file a real install leaves on disk: Windows only ships `<name>.exe`.
+    fn installed_name(name: &str) -> String {
+        if cfg!(windows) {
+            format!("{name}.exe")
+        } else {
+            name.to_string()
+        }
+    }
+
+    fn install(dir: &Path, file_name: &str) -> PathBuf {
+        let path = dir.join(file_name);
+        fs::write(&path, b"stub").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        path
+    }
+
+    #[test]
+    fn finds_the_cli_the_way_the_platform_installs_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let installed = install(dir.path(), &installed_name("claude"));
+
+        assert_eq!(
+            find_in_dirs("claude", [dir.path().to_path_buf()]),
+            Some(installed)
+        );
+    }
+
+    #[test]
+    fn prefers_the_earlier_directory() {
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        let expected = install(first.path(), &installed_name("claude"));
+        install(second.path(), &installed_name("claude"));
+
+        assert_eq!(
+            find_in_dirs(
+                "claude",
+                [first.path().to_path_buf(), second.path().to_path_buf()]
+            ),
+            Some(expected)
+        );
+    }
+
+    #[test]
+    fn reports_nothing_when_no_directory_has_it() {
+        let dir = tempfile::tempdir().unwrap();
+
+        assert_eq!(find_in_dirs("claude", [dir.path().to_path_buf()]), None);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ignores_the_extensionless_script_npm_leaves_beside_a_cmd_shim() {
+        let dir = tempfile::tempdir().unwrap();
+        install(dir.path(), "codex");
+        install(dir.path(), "codex.cmd");
+
+        assert_eq!(find_in_dirs("codex", [dir.path().to_path_buf()]), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn skips_a_file_that_is_not_executable() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("claude"), b"stub").unwrap();
+
+        assert_eq!(find_in_dirs("claude", [dir.path().to_path_buf()]), None);
+    }
 }
