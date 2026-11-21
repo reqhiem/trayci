@@ -3,7 +3,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     PhysicalPosition,
 };
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 use tauri::{
     menu::{Menu, MenuItem},
     Manager,
@@ -38,13 +38,15 @@ pub fn create(app: &tauri::AppHandle) -> tauri::Result<()> {
             }
         });
 
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", windows))]
     let builder = {
-        // AppIndicator needs a menu to display the icon and does not emit tray click events.
+        // AppIndicator needs a menu to display the icon and does not emit tray click events. On
+        // Windows the menu is the only way to quit, so it opens on right click and leaves the left
+        // click to toggle the popover.
         let show = MenuItem::with_id(app, "show", "Show Trayci", true, None::<&str>)?;
         let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
         let menu = Menu::with_items(app, &[&show, &quit])?;
-        builder
+        let builder = builder
             .menu(&menu)
             .on_menu_event(|app, event| match event.id().as_ref() {
                 "show" => {
@@ -55,7 +57,10 @@ pub fn create(app: &tauri::AppHandle) -> tauri::Result<()> {
                 }
                 "quit" => app.exit(0),
                 _ => {}
-            })
+            });
+        #[cfg(windows)]
+        let builder = builder.show_menu_on_left_click(false);
+        builder
     };
 
     builder.build(app)?;
