@@ -4,11 +4,7 @@ use std::path::PathBuf;
 
 #[cfg(target_os = "linux")]
 fn path() -> PathBuf {
-    std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))
-        .unwrap_or_else(std::env::temp_dir)
-        .join("autostart/trayci.desktop")
+    trayci_core::settings::config_base().join("autostart/trayci.desktop")
 }
 
 /// This executable as a new process should start it: the AppImage itself rather than its mount,
