@@ -11,6 +11,9 @@ export default defineConfig({
     strictPort: true,
     host: host || false,
     hmr: host ? { protocol: "ws", host, port: 1421 } : undefined,
+    // Cargo writes into src-tauri/target while compiling; watching it makes
+    // Vite crash with EBUSY on Windows. Tauri watches src-tauri itself.
+    watch: { ignored: ["**/src-tauri/**"] },
   },
   build: { outDir: "dist" },
 });
