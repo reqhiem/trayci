@@ -64,7 +64,8 @@ async fn settings_validate_and_persist_privately() {
             poll_interval_minutes: Some(5),
             providers: Some(BuiltInProviderSettingsPatch {
                 claude: Some(ProviderSettingsPatch {
-                    executable_path: Some(Some("/usr/bin/claude".into())),
+                    // Absolute on every platform: `/usr/bin/...` has no drive letter on Windows.
+                    executable_path: Some(Some(std::env::temp_dir().join("claude"))),
                     ..Default::default()
                 }),
                 ..Default::default()
