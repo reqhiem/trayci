@@ -1,3 +1,5 @@
 # One line ending in the repo and in every checkout. Without this a Windows checkout turns every
 # file into CRLF, which `prettier --check` rejects, and shell scripts stop running.
 * text=auto eol=lf
+# Captured CLI output must stay byte for byte, CRLF included (same reason as .prettierignore).
+src-tauri/core/tests/fixtures/** -text
