@@ -27,19 +27,27 @@ pub async fn resolve_executable(name: &str, configured: Option<&Path>) -> Option
     if configured.is_some_and(executable) {
         return configured.map(Path::to_path_buf);
     }
-    let mut candidates: Vec<PathBuf> = env::var_os("PATH")
-        .map(|path| env::split_paths(&path).map(|dir| dir.join(name)).collect())
+    let mut dirs: Vec<PathBuf> = env::var_os("PATH")
+        .map(|path| env::split_paths(&path).collect())
         .unwrap_or_default();
     if let Some(home) = home_dir() {
-        candidates.extend([
-            home.join(".local/bin").join(name),
-            home.join(".npm-global/bin").join(name),
-            home.join(".bun/bin").join(name),
+        dirs.extend([
+            home.join(".local/bin"),
+            home.join(".npm-global/bin"),
+            home.join(".bun/bin"),
         ]);
     }
+    find_in_dirs(name, dirs)
+}
+
+fn find_in_dirs(name: &str, dirs: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
+    // `.exe` only: npm's extensionless script beside a `.cmd` shim can't run; `.cmd` is #83.
+    let file_name = format!("{name}{}", env::consts::EXE_SUFFIX);
     let mut seen = HashSet::new();
-    candidates
-        .into_iter()
+    dirs.into_iter()
+        // A relative `PATH` entry resolves against the working directory: a planted binary.
+        .filter(|dir| dir.is_absolute())
+        .map(|dir| dir.join(&file_name))
         .find(|path| seen.insert(path.clone()) && executable(path))
 }
 
@@ -59,8 +67,14 @@ fn executable(path: &Path) -> bool {
 }
 
 pub fn home_dir() -> Option<PathBuf> {
-    env::var_os("HOME")
-        .or_else(|| env::var_os("USERPROFILE"))
+    // Windows CLIs use the profile; a `HOME` from Git Bash or MSYS2 can point elsewhere.
+    let [first, second] = if cfg!(windows) {
+        ["USERPROFILE", "HOME"]
+    } else {
+        ["HOME", "USERPROFILE"]
+    };
+    env::var_os(first)
+        .or_else(|| env::var_os(second))
         .map(PathBuf::from)
 }
 
@@ -374,4 +388,84 @@ pub fn title_case(value: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env::consts::EXE_SUFFIX;
+
+    fn install(dir: &Path, file_name: &str) -> PathBuf {
+        let path = dir.join(file_name);
+        fs::write(&path, b"stub").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        path
+    }
+
+    #[test]
+    fn finds_the_cli_the_way_the_platform_installs_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let installed = install(dir.path(), &format!("claude{EXE_SUFFIX}"));
+
+        assert_eq!(
+            find_in_dirs("claude", [dir.path().to_path_buf()]),
+            Some(installed)
+        );
+    }
+
+    #[test]
+    fn prefers_the_earlier_directory() {
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        let expected = install(first.path(), &format!("claude{EXE_SUFFIX}"));
+        install(second.path(), &format!("claude{EXE_SUFFIX}"));
+
+        assert_eq!(
+            find_in_dirs(
+                "claude",
+                [first.path().to_path_buf(), second.path().to_path_buf()]
+            ),
+            Some(expected)
+        );
+    }
+
+    #[test]
+    fn reports_nothing_when_no_directory_has_it() {
+        let dir = tempfile::tempdir().unwrap();
+
+        assert_eq!(find_in_dirs("claude", [dir.path().to_path_buf()]), None);
+    }
+
+    #[test]
+    fn skips_a_relative_directory() {
+        let cwd = env::current_dir().unwrap();
+        let dir = tempfile::tempdir_in(&cwd).unwrap();
+        install(dir.path(), &format!("claude{EXE_SUFFIX}"));
+        let relative = dir.path().strip_prefix(&cwd).unwrap().to_path_buf();
+
+        assert_eq!(find_in_dirs("claude", [relative]), None);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ignores_the_extensionless_script_npm_leaves_beside_a_cmd_shim() {
+        let dir = tempfile::tempdir().unwrap();
+        install(dir.path(), "codex");
+        install(dir.path(), "codex.cmd");
+
+        assert_eq!(find_in_dirs("codex", [dir.path().to_path_buf()]), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn skips_a_file_that_is_not_executable() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("claude"), b"stub").unwrap();
+
+        assert_eq!(find_in_dirs("claude", [dir.path().to_path_buf()]), None);
+    }
 }

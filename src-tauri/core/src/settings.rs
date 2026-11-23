@@ -2,7 +2,7 @@ use crate::model::{
     NotificationSettingsPatch, ProviderSettings, ProviderSettingsPatch, TrayciSettings,
     TrayciSettingsPatch, FONT_SCALE_RANGE,
 };
-use std::{io, path::PathBuf};
+use std::{ffi::OsString, io, path::PathBuf};
 use tokio::fs;
 
 #[derive(Debug, thiserror::Error)]
@@ -16,11 +16,34 @@ pub enum SettingsError {
 }
 
 pub fn config_directory() -> PathBuf {
-    std::env::var_os("XDG_CONFIG_HOME")
+    config_base().join("trayci")
+}
+
+pub fn config_base() -> PathBuf {
+    let env = |key: &str| std::env::var_os(key);
+    if cfg!(windows) {
+        windows_config_base(env)
+    } else {
+        unix_config_base(env)
+    }
+}
+
+/// Not `HOME`, which only Git Bash sets on Windows; an empty value would give a relative path.
+fn windows_config_base(env: impl Fn(&str) -> Option<OsString>) -> PathBuf {
+    let env = |key: &str| env(key).filter(|value| !value.is_empty());
+    env("APPDATA")
         .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))
+        .or_else(|| {
+            env("USERPROFILE").map(|profile| PathBuf::from(profile).join("AppData").join("Roaming"))
+        })
         .unwrap_or_else(std::env::temp_dir)
-        .join("trayci")
+}
+
+fn unix_config_base(env: impl Fn(&str) -> Option<OsString>) -> PathBuf {
+    env("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| env("HOME").map(|home| PathBuf::from(home).join(".config")))
+        .unwrap_or_else(std::env::temp_dir)
 }
 
 pub struct SettingsRepository {
@@ -215,4 +238,73 @@ pub(crate) async fn atomic_json<T: serde::Serialize>(path: &PathBuf, value: &T) 
     fs::write(&temporary, [bytes, b"\n".to_vec()].concat()).await?;
 
     fs::rename(temporary, path).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn env<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<OsString> + 'a {
+        let vars: HashMap<&str, &str> = pairs.iter().copied().collect();
+        move |key| vars.get(key).map(OsString::from)
+    }
+
+    #[test]
+    fn unix_prefers_xdg_config_home() {
+        let base = unix_config_base(env(&[("XDG_CONFIG_HOME", "/xdg"), ("HOME", "/home/ana")]));
+
+        assert_eq!(base, PathBuf::from("/xdg"));
+    }
+
+    #[test]
+    fn unix_falls_back_to_dot_config_under_home() {
+        let base = unix_config_base(env(&[("HOME", "/home/ana")]));
+
+        assert_eq!(base, PathBuf::from("/home/ana").join(".config"));
+    }
+
+    #[test]
+    fn unix_uses_the_temp_dir_only_when_nothing_is_set() {
+        assert_eq!(unix_config_base(env(&[])), std::env::temp_dir());
+    }
+
+    #[test]
+    fn windows_uses_appdata_even_when_home_is_set() {
+        let base = windows_config_base(env(&[
+            ("APPDATA", r"C:\Users\ana\AppData\Roaming"),
+            ("HOME", r"C:\Users\ana"),
+        ]));
+
+        assert_eq!(base, PathBuf::from(r"C:\Users\ana\AppData\Roaming"));
+    }
+
+    #[test]
+    fn windows_derives_roaming_from_the_profile_when_appdata_is_missing() {
+        let base = windows_config_base(env(&[("USERPROFILE", r"C:\Users\ana")]));
+
+        assert_eq!(
+            base,
+            PathBuf::from(r"C:\Users\ana")
+                .join("AppData")
+                .join("Roaming")
+        );
+    }
+
+    #[test]
+    fn windows_treats_an_empty_appdata_as_unset() {
+        let base = windows_config_base(env(&[("APPDATA", ""), ("USERPROFILE", r"C:\Users\ana")]));
+
+        assert_eq!(
+            base,
+            PathBuf::from(r"C:\Users\ana")
+                .join("AppData")
+                .join("Roaming")
+        );
+    }
+
+    #[test]
+    fn windows_uses_the_temp_dir_only_when_nothing_is_set() {
+        assert_eq!(windows_config_base(env(&[])), std::env::temp_dir());
+    }
 }

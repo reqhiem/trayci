@@ -74,13 +74,13 @@ Trayci needs at least one provider CLI that is installed and signed in: `claude`
 | Codex       | `codex app-server` over stdio                                                       | The `codex` CLI's `/status` panel                             |
 | Antigravity | `agy -p /usage --output-format json` (agy 1.1.11 or newer)                          | The `agy` CLI's `/usage` panel, then Google Code Assist quota |
 
-Credentials are only read, never copied or written. On Linux, settings and a credential-free cache live in `$XDG_CONFIG_HOME/trayci`, or `~/.config/trayci` when it is unset.
+Credentials are only read, never copied or written. Settings and a credential-free cache live in `$XDG_CONFIG_HOME/trayci`, or `~/.config/trayci` when it is unset, on Linux and in `%APPDATA%\trayci` on Windows.
 
 ## Platform notes
 
 **Wayland.** The popover can be dragged, but only an X11 session remembers where it was left: GTK lets no Wayland client place its own window, so it reopens wherever the compositor puts it. Running `GDK_BACKEND=x11 trayci` is **not** a workaround — under XWayland the popover never takes input focus and the first click dismisses it instead of reaching the button.
 
-**Windows.** `trayci.exe` is a GUI app, so an unpiped run does not make the shell wait: the output lands after the prompt and no exit code is recorded. Pipe it or wait on it to get both: `trayci.exe usage --json | ConvertFrom-Json` in PowerShell, `start /wait trayci.exe usage` in `cmd`. For the same reason the terminal view is Linux-only for now: on Windows, `trayci` with no arguments starts the tray app.
+**Windows.** `trayci.exe` is a GUI app, so an unpiped run does not make the shell wait: the output lands after the prompt and no exit code is recorded. Pipe it or wait on it to get both: `trayci.exe usage --json | ConvertFrom-Json` in PowerShell, `start /wait trayci.exe usage` in `cmd`. For the same reason the terminal view is Linux-only for now: on Windows, `trayci` with no arguments starts the tray app. Provider CLIs are found as real executables on `PATH` and in `~\.local\bin`, `~\.npm-global\bin`, and `~\.bun\bin` (`claude.exe`, `agy.exe`); the `.cmd` shims that `npm install -g` creates, such as `codex.cmd`, are not detected yet.
 
 Tested distributions and desktops are listed in [COMPATIBILITY.md](COMPATIBILITY.md).
 
