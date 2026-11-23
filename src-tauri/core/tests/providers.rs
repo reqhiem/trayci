@@ -314,7 +314,7 @@ fn strips_terminal_control_sequences() {
 }
 
 mod pty_children {
-    use std::{path::PathBuf, sync::Arc, time::Duration};
+    use std::{io::Write, path::PathBuf, sync::Arc, time::Duration};
     use tokio_util::sync::CancellationToken;
     use trayci_core::providers::common::{active_child_count, run_pty, PtyOptions};
     use trayci_core::ProviderErrorKind;
@@ -324,38 +324,86 @@ mod pty_children {
         ("/bin/sleep".into(), &["10"])
     }
 
+    /// Prints the marker, then idles in a grandchild that only the console's teardown reaches.
+    #[cfg(unix)]
+    fn talker() -> (PathBuf, &'static [&'static str]) {
+        ("/bin/sh".into(), &["-c", "echo TRAYCI_MARKER; sleep 2"])
+    }
+
+    #[cfg(windows)]
+    fn system32(name: &str) -> PathBuf {
+        let root = std::env::var_os("SystemRoot").expect("SystemRoot");
+        PathBuf::from(root).join("System32").join(name)
+    }
+
     #[cfg(windows)]
     fn sleeper() -> (PathBuf, &'static [&'static str]) {
-        let root = std::env::var_os("SystemRoot").expect("SystemRoot");
+        (system32("PING.EXE"), &["-n", "11", "127.0.0.1"])
+    }
+
+    #[cfg(windows)]
+    fn talker() -> (PathBuf, &'static [&'static str]) {
         (
-            PathBuf::from(root).join(r"System32\PING.EXE"),
-            &["-n", "11", "127.0.0.1"],
+            system32("cmd.exe"),
+            &["/c", "echo TRAYCI_MARKER & ping -n 3 127.0.0.1"],
         )
     }
 
-    async fn probe(timeout: Duration, cancellation: CancellationToken) -> ProviderErrorKind {
-        let (executable, args) = sleeper();
+    /// conhost.exe and PING.EXE, counted from outside: a leaked ConPTY keeps both alive.
+    #[cfg(windows)]
+    fn console_processes() -> usize {
+        let list = std::process::Command::new("tasklist")
+            .output()
+            .expect("tasklist")
+            .stdout;
+        String::from_utf8_lossy(&list)
+            .lines()
+            .filter(|line| line.starts_with("conhost.exe") || line.starts_with("PING.EXE"))
+            .count()
+    }
+
+    /// A probe thread stuck in a read stalls the runtime's drop, and the panic report with it.
+    fn stuck(message: &str) -> ! {
+        let _ = writeln!(std::io::stderr(), "{message}");
+        std::process::abort()
+    }
+
+    async fn probe(
+        (executable, args): (PathBuf, &[&str]),
+        delay: Duration,
+        timeout: Duration,
+        cancellation: CancellationToken,
+    ) -> Result<String, ProviderErrorKind> {
         let probe = run_pty(PtyOptions {
             executable: &executable,
             args,
             input: "",
-            write_delay: Duration::ZERO,
-            completion_delay: Duration::ZERO,
+            write_delay: delay,
+            completion_delay: delay,
             timeout,
             cancellation,
-            complete: Arc::new(|_| false),
+            complete: Arc::new(|text| text.contains("TRAYCI_MARKER")),
         });
         tokio::time::timeout(Duration::from_secs(30), probe)
             .await
-            .expect("run_pty outlived its own timeout")
-            .unwrap_err()
-            .kind
+            .unwrap_or_else(|_| stuck("run_pty outlived its own timeout"))
+            .map_err(|error| error.kind)
     }
 
     #[tokio::test]
-    async fn pty_timeout_kills_and_untracks_child() {
-        let kind = probe(Duration::from_millis(50), CancellationToken::new()).await;
-        assert_eq!(kind, ProviderErrorKind::Timeout);
+    async fn pty_probe_kills_and_untracks_its_child() {
+        #[cfg(windows)]
+        let consoles = console_processes();
+
+        let error = probe(
+            sleeper(),
+            Duration::ZERO,
+            Duration::from_millis(50),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error, ProviderErrorKind::Timeout);
         assert_eq!(active_child_count(), 0);
         #[cfg(target_os = "linux")]
         assert_eq!(
@@ -370,8 +418,15 @@ mod pty_children {
             tokio::time::sleep(Duration::from_millis(50)).await;
             cancel.cancel();
         });
-        let kind = probe(Duration::from_secs(5), cancellation).await;
-        assert_eq!(kind, ProviderErrorKind::Aborted);
+        let error = probe(
+            sleeper(),
+            Duration::ZERO,
+            Duration::from_secs(5),
+            cancellation,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error, ProviderErrorKind::Aborted);
         assert_eq!(active_child_count(), 0);
         #[cfg(target_os = "linux")]
         assert_eq!(
@@ -379,6 +434,34 @@ mod pty_children {
             Vec::<u32>::new(),
             "cancelled probe left a zombie"
         );
+
+        let output = probe(
+            talker(),
+            Duration::from_millis(200),
+            Duration::from_secs(10),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+        assert!(output.contains("TRAYCI_MARKER"), "{output:?}");
+        assert_eq!(active_child_count(), 0);
+        #[cfg(target_os = "linux")]
+        assert_eq!(
+            zombie_children(),
+            Vec::<u32>::new(),
+            "completed probe left a zombie"
+        );
+
+        #[cfg(windows)]
+        for attempt in 0.. {
+            if console_processes() <= consoles {
+                break;
+            }
+            if attempt == 100 {
+                stuck("a probe leaked conhost.exe or PING.EXE");
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
     }
 
     /// Killing a child is not the same as reaping it: until the parent waits, the process stays in the

@@ -170,7 +170,8 @@ pub async fn run_pty(options: PtyOptions<'_>) -> Result<String, ProviderError> {
     let write_delay = options.write_delay;
     let completion_delay = options.completion_delay;
     let (started_tx, started_rx) = oneshot::channel();
-    let task = tokio::task::spawn_blocking(move || {
+    let (results_tx, mut results) = tokio::sync::mpsc::unbounded_channel();
+    tokio::task::spawn_blocking(move || -> Result<(), ProviderError> {
         let pair = native_pty_system()
             .openpty(PtySize {
                 rows: 40,
@@ -184,9 +185,9 @@ pub async fn run_pty(options: PtyOptions<'_>) -> Result<String, ProviderError> {
         let mut reader = pair.master.try_clone_reader().map_err(|error| {
             ProviderError::new(ProviderErrorKind::Unknown, format!("PTY reader: {error}"))
         })?;
-        let mut writer = pair.master.take_writer().map_err(|error| {
+        let writer = Arc::new(Mutex::new(pair.master.take_writer().map_err(|error| {
             ProviderError::new(ProviderErrorKind::Unknown, format!("PTY writer: {error}"))
-        })?;
+        })?));
         let mut command = CommandBuilder::new(executable);
         command.args(args);
         command.cwd(cwd);
@@ -195,22 +196,35 @@ pub async fn run_pty(options: PtyOptions<'_>) -> Result<String, ProviderError> {
             ProviderError::new(ProviderErrorKind::Unknown, format!("CLI start: {error}"))
         })?;
         drop(pair.slave);
-        // Handed straight to the registry, so the `?`s below cannot drop it on the floor: whatever
-        // this closure returns, and whether or not it is still running when the caller gives up,
-        // the child is reachable to be killed and reaped.
+        // Handed straight to the registry: whether or not this closure is still running when the
+        // caller gives up, the child is reachable to be killed and reaped.
         let id = NEXT_CHILD.fetch_add(1, Ordering::Relaxed);
         CHILDREN
             .lock()
             .expect("child registry")
             .insert(id, (child, pair.master));
-        let _ = started_tx.send(id);
-        std::thread::sleep(write_delay);
-        writer
-            .write_all(format!("{input}\r").as_bytes())
-            .map_err(|error| {
-                ProviderError::new(ProviderErrorKind::Unknown, format!("PTY input: {error}"))
-            })?;
-        writer.flush().ok();
+        let abandoned = started_tx.send(id).is_err();
+        // Input goes from its own thread, so the reader below answers the DSR and drains throughout.
+        let input_writer = Arc::clone(&writer);
+        let input_results = results_tx.clone();
+        std::thread::spawn(move || {
+            if abandoned {
+                // The caller went away before the child started, so nobody else will reap it.
+                if let Some(probe) = CHILDREN.lock().expect("child registry").remove(&id) {
+                    reap(probe);
+                }
+                return;
+            }
+            std::thread::sleep(write_delay);
+            let mut writer = input_writer.lock().expect("PTY writer");
+            if let Err(error) = writer.write_all(format!("{input}\r").as_bytes()) {
+                let _ = input_results.send(Err(ProviderError::new(
+                    ProviderErrorKind::Unknown,
+                    format!("PTY input: {error}"),
+                )));
+            }
+            writer.flush().ok();
+        });
         let mut output = Vec::new();
         let mut chunk = [0; 8192];
         loop {
@@ -218,38 +232,48 @@ pub async fn run_pty(options: PtyOptions<'_>) -> Result<String, ProviderError> {
             if read == 0 {
                 break;
             }
-            // ConPTY (portable-pty sets INHERIT_CURSOR) holds all output until its DSR is answered.
-            // ponytail: assumes ESC[6n lands in one read; it is conhost's first, lone write.
             #[cfg(windows)]
-            if chunk[..read].windows(4).any(|bytes| bytes == b"\x1b[6n") {
+            let scan = output.len().saturating_sub(3);
+            output.extend_from_slice(&chunk[..read]);
+            // ConPTY (portable-pty sets INHERIT_CURSOR) asks for the cursor and waits for the answer.
+            #[cfg(windows)]
+            for _ in output[scan..]
+                .windows(4)
+                .filter(|bytes| *bytes == b"\x1b[6n")
+            {
+                let mut writer = writer.lock().expect("PTY writer");
                 let _ = writer.write_all(b"\x1b[1;1R");
                 writer.flush().ok();
             }
-            output.extend_from_slice(&chunk[..read]);
             if output.len() > 1_000_000 {
                 output.drain(..output.len() - 1_000_000);
             }
             let clean = strip_terminal_codes(&String::from_utf8_lossy(&output));
             if complete(&clean) {
                 std::thread::sleep(completion_delay);
-                return Ok(clean);
+                let _ = results_tx.send(Ok(clean));
+                while reader.read(&mut chunk).is_ok_and(|read| read > 0) {}
+                return Ok(());
             }
         }
-        Err(ProviderError::new(
+        let _ = results_tx.send(Err(ProviderError::new(
             ProviderErrorKind::Parse,
             "CLI exited before usage was available",
-        ))
+        )));
+        Ok(())
     });
     let id = started_rx
         .await
         .map_err(|_| ProviderError::new(ProviderErrorKind::Unknown, "CLI failed to start"))?;
     let outcome = tokio::select! {
-        result = task => result.map_err(|error| ProviderError::new(ProviderErrorKind::Unknown, format!("PTY task: {error}")))?,
+        result = results.recv() => result.unwrap_or_else(|| Err(ProviderError::new(ProviderErrorKind::Unknown, "PTY task ended"))),
         _ = options.cancellation.cancelled() => Err(ProviderError::new(ProviderErrorKind::Aborted, "Cancelled")),
         _ = tokio::time::sleep(options.timeout) => Err(ProviderError::new(ProviderErrorKind::Timeout, "CLI probe timed out")),
     };
-    if let Some(child) = CHILDREN.lock().expect("child registry").remove(&id) {
-        reap(child);
+    let child = CHILDREN.lock().expect("child registry").remove(&id);
+    if let Some(child) = child {
+        // `reap` blocks; off the runtime it cannot park a worker, and the caller's timeout still fires.
+        let _ = tokio::task::spawn_blocking(move || reap(child)).await;
     }
     outcome
 }
