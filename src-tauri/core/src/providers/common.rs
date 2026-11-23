@@ -1,6 +1,6 @@
 use crate::model::{ProviderError, ProviderErrorKind};
 use chrono::DateTime;
-use portable_pty::{native_pty_system, Child, CommandBuilder, PtySize};
+use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use regex::Regex;
 use reqwest::header::{HeaderMap, RETRY_AFTER};
 use std::{
@@ -18,8 +18,10 @@ use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
 /// The children themselves, not just killers: a killed process stays in the process table as a
-/// zombie until someone waits on it, and only the `Child` can do that.
-static CHILDREN: LazyLock<Mutex<HashMap<u64, Box<dyn Child + Send + Sync>>>> =
+/// zombie until someone waits on it, and only the `Child` can do that. Its master too: on Windows
+/// only dropping it closes the ConPTY, so a killed child's reader never sees EOF without it.
+type Probe = (Box<dyn Child + Send + Sync>, Box<dyn MasterPty + Send>);
+static CHILDREN: LazyLock<Mutex<HashMap<u64, Probe>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 static NEXT_CHILD: AtomicU64 = AtomicU64::new(1);
 
@@ -130,9 +132,11 @@ pub fn abort_all_children() {
 /// Kills a child and collects it. In that order: the CLIs are interactive and do not exit on their
 /// own, so waiting on a live one never returns. A signalled child cannot ignore SIGKILL, so the
 /// wait that follows is the reap, not a second chance to hang.
-fn reap(mut child: Box<dyn Child + Send + Sync>) {
+fn reap((mut child, master): Probe) {
     let _ = child.kill();
     let _ = child.wait();
+    // Last, while the reader still drains: `ClosePseudoConsole` can block on an undrained pipe.
+    drop(master);
 }
 
 pub fn active_child_count() -> usize {
@@ -177,6 +181,12 @@ pub async fn run_pty(options: PtyOptions<'_>) -> Result<String, ProviderError> {
             .map_err(|error| {
                 ProviderError::new(ProviderErrorKind::Unknown, format!("PTY: {error}"))
             })?;
+        let mut reader = pair.master.try_clone_reader().map_err(|error| {
+            ProviderError::new(ProviderErrorKind::Unknown, format!("PTY reader: {error}"))
+        })?;
+        let mut writer = pair.master.take_writer().map_err(|error| {
+            ProviderError::new(ProviderErrorKind::Unknown, format!("PTY writer: {error}"))
+        })?;
         let mut command = CommandBuilder::new(executable);
         command.args(args);
         command.cwd(cwd);
@@ -189,14 +199,11 @@ pub async fn run_pty(options: PtyOptions<'_>) -> Result<String, ProviderError> {
         // this closure returns, and whether or not it is still running when the caller gives up,
         // the child is reachable to be killed and reaped.
         let id = NEXT_CHILD.fetch_add(1, Ordering::Relaxed);
-        CHILDREN.lock().expect("child registry").insert(id, child);
+        CHILDREN
+            .lock()
+            .expect("child registry")
+            .insert(id, (child, pair.master));
         let _ = started_tx.send(id);
-        let mut reader = pair.master.try_clone_reader().map_err(|error| {
-            ProviderError::new(ProviderErrorKind::Unknown, format!("PTY reader: {error}"))
-        })?;
-        let mut writer = pair.master.take_writer().map_err(|error| {
-            ProviderError::new(ProviderErrorKind::Unknown, format!("PTY writer: {error}"))
-        })?;
         std::thread::sleep(write_delay);
         writer
             .write_all(format!("{input}\r").as_bytes())
