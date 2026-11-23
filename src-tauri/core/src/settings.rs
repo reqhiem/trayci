@@ -31,8 +31,10 @@ pub fn config_base() -> PathBuf {
 }
 
 /// Windows does not define `HOME` outside Git Bash, so a `HOME`-based path would fall through to
-/// the temp directory, where Storage Sense can delete it.
+/// the temp directory, where Storage Sense can delete it. An empty value counts as unset: joined
+/// onto, it would give a path relative to wherever the app was started.
 fn windows_config_base(env: impl Fn(&str) -> Option<OsString>) -> PathBuf {
+    let env = |key: &str| env(key).filter(|value| !value.is_empty());
     env("APPDATA")
         .map(PathBuf::from)
         .or_else(|| {
@@ -284,6 +286,18 @@ mod tests {
     #[test]
     fn windows_derives_roaming_from_the_profile_when_appdata_is_missing() {
         let base = windows_config_base(env(&[("USERPROFILE", r"C:\Users\ana")]));
+
+        assert_eq!(
+            base,
+            PathBuf::from(r"C:\Users\ana")
+                .join("AppData")
+                .join("Roaming")
+        );
+    }
+
+    #[test]
+    fn windows_treats_an_empty_appdata_as_unset() {
+        let base = windows_config_base(env(&[("APPDATA", ""), ("USERPROFILE", r"C:\Users\ana")]));
 
         assert_eq!(
             base,
