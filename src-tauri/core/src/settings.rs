@@ -40,6 +40,8 @@ fn windows_config_base(env: impl Fn(&str) -> Option<OsString>) -> PathBuf {
 }
 
 fn unix_config_base(env: impl Fn(&str) -> Option<OsString>) -> PathBuf {
+    // XDG ignores relative values; a byte check, not `Path::is_absolute`, so tests agree on Windows.
+    let env = |key: &str| env(key).filter(|value| value.as_encoded_bytes().starts_with(b"/"));
     env("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .or_else(|| env("HOME").map(|home| PathBuf::from(home).join(".config")))
@@ -262,6 +264,25 @@ mod tests {
         let base = unix_config_base(env(&[("HOME", "/home/ana")]));
 
         assert_eq!(base, PathBuf::from("/home/ana").join(".config"));
+    }
+
+    #[test]
+    fn unix_ignores_an_empty_xdg_config_home() {
+        let base = unix_config_base(env(&[("XDG_CONFIG_HOME", ""), ("HOME", "/home/ana")]));
+
+        assert_eq!(base, PathBuf::from("/home/ana").join(".config"));
+    }
+
+    #[test]
+    fn unix_ignores_a_relative_xdg_config_home() {
+        let base = unix_config_base(env(&[("XDG_CONFIG_HOME", "xdg"), ("HOME", "/home/ana")]));
+
+        assert_eq!(base, PathBuf::from("/home/ana").join(".config"));
+    }
+
+    #[test]
+    fn unix_ignores_an_empty_home() {
+        assert_eq!(unix_config_base(env(&[("HOME", "")])), std::env::temp_dir());
     }
 
     #[test]
