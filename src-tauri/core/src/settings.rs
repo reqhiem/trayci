@@ -245,7 +245,7 @@ pub(crate) async fn atomic_json<T: serde::Serialize>(path: &PathBuf, value: &T) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{collections::HashMap, ffi::OsString};
+    use std::collections::HashMap;
 
     fn env<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<OsString> + 'a {
         let vars: HashMap<&str, &str> = pairs.iter().copied().collect();
