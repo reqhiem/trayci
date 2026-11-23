@@ -44,6 +44,10 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          # On a key miss a PR would save ~1 GB that only that PR can read; PRs restore main's instead.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo fmt --check
         working-directory: src-tauri
       - run: cargo clippy --workspace --all-targets -- -D warnings
@@ -75,6 +79,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo clippy --workspace --all-targets -- -D warnings
         working-directory: src-tauri
       - run: cargo test --workspace
