@@ -65,9 +65,7 @@ jobs:
             src-tauri/target/release/bundle/appimage/*.AppImage
           if-no-files-found: error
 
-  # Lints the whole workspace so `cfg(windows)` code in the app crate is checked; bundle-win builds
-  # it without denying warnings. Tests stay on the core crate: the app crate's tests are
-  # platform-independent and already run in rust-linux.
+  # Same steps as rust-linux. The Cargo workspace is src-tauri, so rust-cache is pointed at it.
   rust-windows:
     runs-on: windows-latest
     steps:
@@ -80,14 +78,8 @@ jobs:
           workspaces: src-tauri
       - run: cargo clippy --workspace --all-targets -- -D warnings
         working-directory: src-tauri
-      - run: cargo test -p trayci-core
+      - run: cargo test --workspace
         working-directory: src-tauri
-
-  bundle-win:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v6
         with:
