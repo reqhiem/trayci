@@ -313,29 +313,51 @@ fn strips_terminal_control_sequences() {
     );
 }
 
-#[cfg(unix)]
 mod pty_children {
-    use std::{path::Path, sync::Arc, time::Duration};
+    use std::{path::PathBuf, sync::Arc, time::Duration};
     use tokio_util::sync::CancellationToken;
     use trayci_core::providers::common::{active_child_count, run_pty, PtyOptions};
     use trayci_core::ProviderErrorKind;
 
-    #[tokio::test]
-    async fn pty_timeout_kills_and_untracks_child() {
-        let error = run_pty(PtyOptions {
-            executable: Path::new("/bin/sleep"),
-            args: &["10"],
+    #[cfg(unix)]
+    fn sleeper() -> (PathBuf, &'static [&'static str]) {
+        ("/bin/sleep".into(), &["10"])
+    }
+
+    #[cfg(windows)]
+    fn sleeper() -> (PathBuf, &'static [&'static str]) {
+        let root = std::env::var_os("SystemRoot").expect("SystemRoot");
+        (
+            PathBuf::from(root).join(r"System32\PING.EXE"),
+            &["-n", "11", "127.0.0.1"],
+        )
+    }
+
+    async fn probe(timeout: Duration, cancellation: CancellationToken) -> ProviderErrorKind {
+        let (executable, args) = sleeper();
+        let probe = run_pty(PtyOptions {
+            executable: &executable,
+            args,
             input: "",
             write_delay: Duration::ZERO,
             completion_delay: Duration::ZERO,
-            timeout: Duration::from_millis(50),
-            cancellation: CancellationToken::new(),
+            timeout,
+            cancellation,
             complete: Arc::new(|_| false),
-        })
-        .await
-        .unwrap_err();
-        assert_eq!(error.kind, ProviderErrorKind::Timeout);
+        });
+        tokio::time::timeout(Duration::from_secs(30), probe)
+            .await
+            .expect("run_pty outlived its own timeout")
+            .unwrap_err()
+            .kind
+    }
+
+    #[tokio::test]
+    async fn pty_timeout_kills_and_untracks_child() {
+        let kind = probe(Duration::from_millis(50), CancellationToken::new()).await;
+        assert_eq!(kind, ProviderErrorKind::Timeout);
         assert_eq!(active_child_count(), 0);
+        #[cfg(target_os = "linux")]
         assert_eq!(
             zombie_children(),
             Vec::<u32>::new(),
@@ -348,20 +370,10 @@ mod pty_children {
             tokio::time::sleep(Duration::from_millis(50)).await;
             cancel.cancel();
         });
-        let error = run_pty(PtyOptions {
-            executable: Path::new("/bin/sleep"),
-            args: &["10"],
-            input: "",
-            write_delay: Duration::ZERO,
-            completion_delay: Duration::ZERO,
-            timeout: Duration::from_secs(5),
-            cancellation,
-            complete: Arc::new(|_| false),
-        })
-        .await
-        .unwrap_err();
-        assert_eq!(error.kind, ProviderErrorKind::Aborted);
+        let kind = probe(Duration::from_secs(5), cancellation).await;
+        assert_eq!(kind, ProviderErrorKind::Aborted);
         assert_eq!(active_child_count(), 0);
+        #[cfg(target_os = "linux")]
         assert_eq!(
             zombie_children(),
             Vec::<u32>::new(),
@@ -371,6 +383,7 @@ mod pty_children {
 
     /// Killing a child is not the same as reaping it: until the parent waits, the process stays in the
     /// table as `Z`. `active_child_count` cannot see that, so it is read straight from `/proc`.
+    #[cfg(target_os = "linux")]
     fn zombie_children() -> Vec<u32> {
         let me = std::process::id();
         let mut zombies: Vec<u32> = std::fs::read_dir("/proc")
