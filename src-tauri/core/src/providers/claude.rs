@@ -1,6 +1,6 @@
 use super::common::{
-    clamp, epoch_ms, home_dir, rate_limited, reset_from_text, resolve_executable, run_pty,
-    PtyOptions,
+    clamp, env_path, epoch_ms, home_dir, rate_limited, reset_from_text, resolve_executable,
+    run_pty, PtyOptions,
 };
 use crate::{model::*, service::UsageProvider};
 use async_trait::async_trait;
@@ -46,16 +46,9 @@ impl ClaudeProvider {
 }
 
 fn credential_path() -> Option<PathBuf> {
-    env::var_os("CLAUDE_CONFIG_DIR")
-        .map(PathBuf::from)
-        .or_else(home_dir)
-        .map(|path| {
-            if env::var_os("CLAUDE_CONFIG_DIR").is_some() {
-                path.join(".credentials.json")
-            } else {
-                path.join(".claude/.credentials.json")
-            }
-        })
+    env_path("CLAUDE_CONFIG_DIR")
+        .map(|path| path.join(".credentials.json"))
+        .or_else(|| home_dir().map(|path| path.join(".claude/.credentials.json")))
 }
 
 /// The token, whatever its `expiresAt` says: that field is not authoritative for the usage

@@ -1,7 +1,7 @@
 use super::{
     common::{
-        clamp, epoch_ms, home_dir, rate_limited, reset_from_text, reset_phrase, resolve_executable,
-        run_process, run_pty, PtyOptions,
+        clamp, env_path, epoch_ms, home_dir, rate_limited, reset_from_text, reset_phrase,
+        resolve_executable, run_process, run_pty, PtyOptions,
     },
     google_oauth,
 };
@@ -40,8 +40,7 @@ struct Credentials {
     expiry: u64,
 }
 fn credentials_path() -> Option<PathBuf> {
-    env::var_os("GEMINI_CLI_HOME")
-        .map(PathBuf::from)
+    env_path("GEMINI_CLI_HOME")
         .or_else(|| home_dir().map(|path| path.join(".gemini")))
         .map(|path| path.join("oauth_creds.json"))
 }
