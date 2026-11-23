@@ -46,7 +46,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-          # A PR's cache is readable only by that PR; each is ~1 GB of the repo's 10 GB.
+          # On a key miss a PR would save ~1 GB that only that PR can read; PRs restore main's instead.
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo fmt --check
         working-directory: src-tauri
