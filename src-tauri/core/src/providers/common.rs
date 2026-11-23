@@ -218,6 +218,13 @@ pub async fn run_pty(options: PtyOptions<'_>) -> Result<String, ProviderError> {
             if read == 0 {
                 break;
             }
+            // ConPTY (portable-pty sets INHERIT_CURSOR) holds all output until its DSR is answered.
+            // ponytail: assumes ESC[6n lands in one read; it is conhost's first, lone write.
+            #[cfg(windows)]
+            if chunk[..read].windows(4).any(|bytes| bytes == b"\x1b[6n") {
+                let _ = writer.write_all(b"\x1b[1;1R");
+                writer.flush().ok();
+            }
             output.extend_from_slice(&chunk[..read]);
             if output.len() > 1_000_000 {
                 output.drain(..output.len() - 1_000_000);
