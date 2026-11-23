@@ -281,8 +281,13 @@ mod tests {
     }
 
     #[test]
-    fn unix_ignores_an_empty_home() {
-        assert_eq!(unix_config_base(env(&[("HOME", "")])), std::env::temp_dir());
+    fn unix_ignores_an_empty_or_relative_home() {
+        for home in ["", "home/ana"] {
+            assert_eq!(
+                unix_config_base(env(&[("HOME", home)])),
+                std::env::temp_dir()
+            );
+        }
     }
 
     #[test]
