@@ -3,7 +3,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     PhysicalPosition,
 };
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 use tauri::{
     menu::{Menu, MenuItem},
     Manager,
@@ -38,14 +38,16 @@ pub fn create(app: &tauri::AppHandle) -> tauri::Result<()> {
             }
         });
 
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", windows))]
     let builder = {
         // AppIndicator needs a menu to display the icon and does not emit tray click events.
+        // Linux ignores `show_menu_on_left_click`.
         let show = MenuItem::with_id(app, "show", "Show Trayci", true, None::<&str>)?;
         let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
         let menu = Menu::with_items(app, &[&show, &quit])?;
         builder
             .menu(&menu)
+            .show_menu_on_left_click(false)
             .on_menu_event(|app, event| match event.id().as_ref() {
                 "show" => {
                     if let Some(window) = app.get_webview_window(crate::popover::LABEL) {

@@ -1,0 +1,4 @@
+# Git for Windows checks out CRLF by default; Prettier and shell scripts need LF.
+* text=auto eol=lf
+# Captured CLI output stays byte for byte, CRLF included.
+src-tauri/core/tests/fixtures/** -text
