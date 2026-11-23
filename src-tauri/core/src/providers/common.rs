@@ -252,6 +252,8 @@ pub async fn run_pty(options: PtyOptions<'_>) -> Result<String, ProviderError> {
             if complete(&clean) {
                 std::thread::sleep(completion_delay);
                 let _ = results_tx.send(Ok(clean));
+                // Someone must still be reading when `reap` closes the console.
+                #[cfg(windows)]
                 while reader.read(&mut chunk).is_ok_and(|read| read > 0) {}
                 return Ok(());
             }
