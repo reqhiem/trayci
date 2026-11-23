@@ -1,5 +1,5 @@
 use super::common::{
-    bounded_cwd, clamp, epoch_ms, home_dir, reset_from_text, resolve_executable, run_pty,
+    bounded_cwd, clamp, env_path, epoch_ms, home_dir, reset_from_text, resolve_executable, run_pty,
     title_case, PtyOptions,
 };
 use crate::{model::*, service::UsageProvider};
@@ -44,9 +44,7 @@ impl CodexProvider {
 }
 
 fn has_auth() -> bool {
-    let home = env::var_os("CODEX_HOME")
-        .map(Into::into)
-        .or_else(|| home_dir().map(|path| path.join(".codex")));
+    let home = env_path("CODEX_HOME").or_else(|| home_dir().map(|path| path.join(".codex")));
     let auth = home
         .and_then(|path| fs::read(path.join("auth.json")).ok())
         .and_then(|data| serde_json::from_slice::<Value>(&data).ok());
