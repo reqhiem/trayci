@@ -5,9 +5,7 @@ use regex::Regex;
 use reqwest::header::{HeaderMap, RETRY_AFTER};
 use std::{
     collections::{HashMap, HashSet},
-    env,
-    ffi::OsString,
-    fs,
+    env, fs,
     io::{Read, Write},
     path::{Path, PathBuf},
     sync::{
@@ -72,7 +70,7 @@ pub fn home_dir() -> Option<PathBuf> {
     home_from(|key| env::var_os(key))
 }
 
-fn home_from(env: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
+fn home_from(env: impl Fn(&str) -> Option<std::ffi::OsString>) -> Option<PathBuf> {
     // Windows CLIs use the profile; a `HOME` from Git Bash or MSYS2 can point elsewhere.
     let [first, second] = if cfg!(windows) {
         ["USERPROFILE", "HOME"]
@@ -440,25 +438,14 @@ mod tests {
 
     #[test]
     fn home_skips_an_empty_first_variable() {
-        let home = |pairs: [(&str, &str); 2]| {
-            home_from(|key| {
-                pairs
-                    .iter()
-                    .find(|(name, _)| *name == key)
-                    .map(|(_, value)| OsString::from(value))
-            })
+        let resolve = |home: &str, userprofile: &str| {
+            home_from(|key| Some(if key == "HOME" { home } else { userprofile }.into()))
         };
 
         // Each host reads a different variable first, so each assert covers one of them.
-        assert_eq!(
-            home([("HOME", ""), ("USERPROFILE", "/profile")]),
-            Some(PathBuf::from("/profile"))
-        );
-        assert_eq!(
-            home([("USERPROFILE", ""), ("HOME", "/home")]),
-            Some(PathBuf::from("/home"))
-        );
-        assert_eq!(home([("HOME", ""), ("USERPROFILE", "")]), None);
+        assert_eq!(resolve("", "/profile"), Some(PathBuf::from("/profile")));
+        assert_eq!(resolve("/home", ""), Some(PathBuf::from("/home")));
+        assert_eq!(resolve("", ""), None);
     }
 
     #[test]
