@@ -41,8 +41,9 @@ pub async fn resolve_executable(name: &str, configured: Option<&Path>) -> Option
 }
 
 fn find_in_dirs(name: &str, dirs: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
-    // Windows can only run `<name>.exe`; a bare `<dir>\<name>` never matches the real file, and
-    // the extensionless script npm drops next to a `.cmd` shim is not runnable.
+    // Only `<name>.exe` on Windows: the extensionless script npm drops next to a `.cmd` shim is
+    // not runnable, and starting a `.cmd` through the PTY and killing its whole process tree is
+    // unverified (#83).
     let file_name = format!("{name}{}", env::consts::EXE_SUFFIX);
     let mut seen = HashSet::new();
     dirs.into_iter()
