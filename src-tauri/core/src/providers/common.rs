@@ -46,6 +46,9 @@ fn find_in_dirs(name: &str, dirs: impl IntoIterator<Item = PathBuf>) -> Option<P
     let file_name = format!("{name}{}", env::consts::EXE_SUFFIX);
     let mut seen = HashSet::new();
     dirs.into_iter()
+        // An empty or relative `PATH` entry resolves against the working directory, where anyone
+        // can drop a `claude.exe`.
+        .filter(|dir| dir.is_absolute())
         .map(|dir| dir.join(&file_name))
         .find(|path| seen.insert(path.clone()) && executable(path))
 }
@@ -438,6 +441,16 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         assert_eq!(find_in_dirs("claude", [dir.path().to_path_buf()]), None);
+    }
+
+    #[test]
+    fn skips_a_relative_directory() {
+        let cwd = env::current_dir().unwrap();
+        let dir = tempfile::tempdir_in(&cwd).unwrap();
+        install(dir.path(), &format!("claude{EXE_SUFFIX}"));
+        let relative = dir.path().strip_prefix(&cwd).unwrap().to_path_buf();
+
+        assert_eq!(find_in_dirs("claude", [relative]), None);
     }
 
     #[cfg(windows)]
