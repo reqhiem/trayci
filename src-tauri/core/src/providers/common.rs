@@ -23,10 +23,115 @@ static CHILDREN: LazyLock<Mutex<HashMap<u64, Box<dyn Child + Send + Sync>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 static NEXT_CHILD: AtomicU64 = AtomicU64::new(1);
 
+/// A real `.exe` anywhere is preferred over an npm `.cmd` shim.
 pub async fn resolve_executable(name: &str, configured: Option<&Path>) -> Option<PathBuf> {
-    if configured.is_some_and(executable) {
-        return configured.map(Path::to_path_buf);
+    let shims = cfg!(windows)
+        .then(|| resolve(name, &[".cmd"], None))
+        .into_iter()
+        .flatten();
+    runnable(resolve(name, &[env::consts::EXE_SUFFIX], configured).chain(shims))
+}
+
+/// Never a `.cmd` itself, only the native exe it starts: killing a timed-out `cmd.exe` leaves the
+/// `node.exe` it started running.
+fn runnable(mut paths: impl Iterator<Item = PathBuf>) -> Option<PathBuf> {
+    paths.find_map(|path| {
+        if cfg!(windows)
+            && path
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("cmd"))
+        {
+            shim_target(&path)
+        } else {
+            Some(path)
+        }
+    })
+}
+
+/// The native exe behind an npm cmd-shim (cmd-shim 7 or 9): a direct `.exe` target, or the one
+/// `@openai/codex`'s node launcher starts. Anything else reads as not installed.
+fn shim_target(shim: &Path) -> Option<PathBuf> {
+    static SHIM: LazyLock<Regex> = LazyLock::new(|| {
+        let pathext = regex::escape("SET PATHEXT=%PATHEXT:;.JS;=;%");
+        Regex::new(&format!(
+            r#"(?i)^{}(?P<node>{}(?:{pathext}\n)?\)\n{}(?:{pathext} & )?"%_prog%" +)?"%dp0%\\(?P<target>[^"\n]+)" +%\*$"#,
+            regex::escape("@ECHO off\nGOTO start\n:find_dp0\nSET dp0=%~dp0\nEXIT /b\n:start\nSETLOCAL\nCALL :find_dp0\n"),
+            regex::escape("IF EXIST \"%dp0%\\node.exe\" (\nSET \"_prog=%dp0%\\node.exe\"\n) ELSE (\nSET \"_prog=node\"\n"),
+            regex::escape("endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "),
+        ))
+        .unwrap()
+    });
+    let mut text = String::new();
+    fs::File::open(shim)
+        .ok()?
+        .take(64 * 1024)
+        .read_to_string(&mut text)
+        .ok()?;
+    let text = text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let shim_match = SHIM.captures(&text)?;
+    let target = &shim_match["target"];
+    // A plain path below the shim's directory: no variable, drive, stream, root or `..`.
+    if target.starts_with(['\\', '/'])
+        || target.contains(['%', '^', '&', '|', '<', '>', ':'])
+        || target.split(['\\', '/']).any(|part| part == "..")
+    {
+        return None;
     }
+    let join = |base: &Path, relative: &str| {
+        relative
+            .split(['\\', '/'])
+            .fold(base.to_path_buf(), |path, part| path.join(part))
+    };
+    let script = join(shim.parent()?, target);
+    let candidates = match shim_match.name("node") {
+        None if script
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("exe")) =>
+        {
+            vec![script]
+        }
+        Some(_) if script.ends_with("@openai/codex/bin/codex.js") => {
+            // ponytail: x64 and codex.js's current private layout; anything else is not installed.
+            let package = script.parent()?.parent()?;
+            let native = "vendor/x86_64-pc-windows-msvc/bin/codex.exe";
+            vec![
+                join(
+                    package,
+                    &format!("node_modules/@openai/codex-win32-x64/{native}"),
+                ),
+                join(package.parent()?, &format!("codex-win32-x64/{native}")),
+                join(package, native),
+                join(package, "vendor/x86_64-pc-windows-msvc/codex/codex.exe"), // before 0.99
+            ]
+        }
+        _ => return None,
+    };
+    candidates.into_iter().find(|path| executable(path))
+}
+
+/// Also finds npm's `.cmd` shim, to read the package installed beside it. Never spawn the result.
+pub async fn resolve_installed(name: &str, configured: Option<&Path>) -> Option<PathBuf> {
+    let suffixes: &[&str] = if cfg!(windows) {
+        &[".exe", ".cmd"]
+    } else {
+        &[""]
+    };
+    resolve(name, suffixes, configured).next()
+}
+
+fn resolve<'a>(
+    name: &'a str,
+    suffixes: &'a [&'a str],
+    configured: Option<&Path>,
+) -> impl Iterator<Item = PathBuf> + 'a {
+    let configured = configured
+        .filter(|path| executable(path))
+        .map(Path::to_path_buf);
     let mut dirs: Vec<PathBuf> = env::var_os("PATH")
         .map(|path| env::split_paths(&path).collect())
         .unwrap_or_default();
@@ -37,18 +142,26 @@ pub async fn resolve_executable(name: &str, configured: Option<&Path>) -> Option
             home.join(".bun/bin"),
         ]);
     }
-    find_in_dirs(name, dirs)
+    configured
+        .into_iter()
+        .chain(find_in_dirs(name, suffixes, dirs))
 }
 
-fn find_in_dirs(name: &str, dirs: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
-    // `.exe` only: npm's extensionless script beside a `.cmd` shim can't run; `.cmd` is #83.
-    let file_name = format!("{name}{}", env::consts::EXE_SUFFIX);
+fn find_in_dirs<'a>(
+    name: &'a str,
+    suffixes: &'a [&'a str],
+    dirs: impl IntoIterator<Item = PathBuf> + 'a,
+) -> impl Iterator<Item = PathBuf> + 'a {
     let mut seen = HashSet::new();
     dirs.into_iter()
         // A relative `PATH` entry resolves against the working directory: a planted binary.
         .filter(|dir| dir.is_absolute())
-        .map(|dir| dir.join(&file_name))
-        .find(|path| seen.insert(path.clone()) && executable(path))
+        .flat_map(move |dir| {
+            suffixes
+                .iter()
+                .map(move |suffix| dir.join(format!("{name}{suffix}")))
+        })
+        .filter(move |path| seen.insert(path.clone()) && executable(path))
 }
 
 fn executable(path: &Path) -> bool {
@@ -424,7 +537,7 @@ mod tests {
         let installed = install(dir.path(), &format!("claude{EXE_SUFFIX}"));
 
         assert_eq!(
-            find_in_dirs("claude", [dir.path().to_path_buf()]),
+            find_in_dirs("claude", &[EXE_SUFFIX], [dir.path().to_path_buf()]).next(),
             Some(installed)
         );
     }
@@ -439,8 +552,10 @@ mod tests {
         assert_eq!(
             find_in_dirs(
                 "claude",
+                &[EXE_SUFFIX],
                 [first.path().to_path_buf(), second.path().to_path_buf()]
-            ),
+            )
+            .next(),
             Some(expected)
         );
     }
@@ -467,7 +582,10 @@ mod tests {
     fn reports_nothing_when_no_directory_has_it() {
         let dir = tempfile::tempdir().unwrap();
 
-        assert_eq!(find_in_dirs("claude", [dir.path().to_path_buf()]), None);
+        assert_eq!(
+            find_in_dirs("claude", &[EXE_SUFFIX], [dir.path().to_path_buf()]).next(),
+            None
+        );
     }
 
     #[test]
@@ -477,7 +595,10 @@ mod tests {
         install(dir.path(), &format!("claude{EXE_SUFFIX}"));
         let relative = dir.path().strip_prefix(&cwd).unwrap().to_path_buf();
 
-        assert_eq!(find_in_dirs("claude", [relative]), None);
+        assert_eq!(
+            find_in_dirs("claude", &[EXE_SUFFIX], [relative]).next(),
+            None
+        );
     }
 
     #[cfg(windows)]
@@ -487,7 +608,10 @@ mod tests {
         install(dir.path(), "codex");
         install(dir.path(), "codex.cmd");
 
-        assert_eq!(find_in_dirs("codex", [dir.path().to_path_buf()]), None);
+        assert_eq!(
+            find_in_dirs("codex", &[EXE_SUFFIX], [dir.path().to_path_buf()]).next(),
+            None
+        );
     }
 
     #[cfg(unix)]
@@ -496,6 +620,164 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         fs::write(dir.path().join("claude"), b"stub").unwrap();
 
-        assert_eq!(find_in_dirs("claude", [dir.path().to_path_buf()]), None);
+        assert_eq!(
+            find_in_dirs("claude", &[EXE_SUFFIX], [dir.path().to_path_buf()]).next(),
+            None
+        );
+    }
+
+    #[test]
+    fn reads_the_gemini_client_beside_an_npm_cmd_shim() {
+        // `npm install -g` on Windows: shims in `%APPDATA%\npm`, the package in `node_modules` there.
+        let npm = tempfile::tempdir().unwrap();
+        let package = npm.path().join("node_modules/@google/gemini-cli");
+        fs::create_dir_all(package.join("bundle")).unwrap();
+        fs::write(
+            package.join("package.json"),
+            r#"{"name":"@google/gemini-cli"}"#,
+        )
+        .unwrap();
+        fs::write(
+            package.join("bundle/chunk-UF44X63P.js"),
+            r#"var OAUTH_CLIENT_ID = "id"; var OAUTH_CLIENT_SECRET = "secret";"#,
+        )
+        .unwrap();
+        for shim in ["gemini", "gemini.cmd", "gemini.ps1"] {
+            install(npm.path(), shim);
+        }
+        let dirs = || [npm.path().to_path_buf()];
+
+        // What `resolve_executable` searches on Windows: a spawned CLI never resolves to a shim.
+        assert_eq!(find_in_dirs("gemini", &[".exe"], dirs()).next(), None);
+        let shim = find_in_dirs("gemini", &[".exe", ".cmd"], dirs())
+            .next()
+            .unwrap();
+        assert_eq!(shim, npm.path().join("gemini.cmd"));
+        assert_eq!(
+            super::super::google_oauth::from_binary(shim),
+            Some(("id".into(), "secret".into()))
+        );
+    }
+
+    const SHIM_HEAD: &str = "@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\n";
+
+    fn direct_shim(target: &str) -> String {
+        format!("{SHIM_HEAD}\"%dp0%\\{target}\"   %*\r\n")
+    }
+
+    /// cmd-shim 7 (npm 10 and 11) sets PATHEXT in the ELSE branch; cmd-shim 9 on the last line.
+    fn node_shim(script: &str, cmd_shim_9: bool) -> String {
+        let (branch, last) = match cmd_shim_9 {
+            false => ("  SET PATHEXT=%PATHEXT:;.JS;=;%\r\n", ""),
+            true => ("", "set PATHEXT=%PATHEXT:;.JS;=;% & "),
+        };
+        format!(
+            "{SHIM_HEAD}\r\nIF EXIST \"%dp0%\\node.exe\" (\r\n  SET \"_prog=%dp0%\\node.exe\"\r\n) ELSE (\r\n  SET \"_prog=node\"\r\n{branch})\r\n\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & {last}\"%_prog%\"  \"%dp0%\\{script}\" %*\r\n"
+        )
+    }
+
+    fn write_shim(dir: &Path, contents: &str) -> PathBuf {
+        let shim = install(dir, "tool.cmd");
+        fs::write(&shim, contents).unwrap();
+        shim
+    }
+
+    fn install_claude(dir: &Path) -> (PathBuf, PathBuf) {
+        let bin = dir.join("node_modules/@anthropic-ai/claude-code/bin");
+        fs::create_dir_all(&bin).unwrap();
+        let exe = install(&bin, "claude.exe");
+        let shim = install(dir, "claude.cmd");
+        fs::write(
+            &shim,
+            direct_shim(r"node_modules\@anthropic-ai\claude-code\bin\claude.exe"),
+        )
+        .unwrap();
+        (shim, exe)
+    }
+
+    #[tokio::test]
+    async fn runs_the_exe_an_npm_shim_starts_never_the_shim() {
+        let dir = tempfile::tempdir().unwrap();
+        let (shim, exe) = install_claude(dir.path());
+        // Elsewhere a script named `*.cmd` is just a script.
+        let expected = if cfg!(windows) { exe } else { shim.clone() };
+
+        assert_eq!(
+            resolve_executable("claude", Some(&shim)).await,
+            Some(expected)
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn looks_past_a_shim_it_cannot_follow() {
+        let (first, second) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        fs::write(
+            install(first.path(), "claude.cmd"),
+            "@ECHO off\r\nnode cli.js %*\r\n",
+        )
+        .unwrap();
+        let (_, exe) = install_claude(second.path());
+        let dirs = [first.path().to_path_buf(), second.path().to_path_buf()];
+
+        assert_eq!(runnable(find_in_dirs("claude", &[".cmd"], dirs)), Some(exe));
+    }
+
+    #[test]
+    fn follows_the_codex_shim_to_its_native_binary() {
+        let native = "vendor/x86_64-pc-windows-msvc/bin/codex.exe";
+        for layout in [
+            format!("node_modules/@openai/codex/node_modules/@openai/codex-win32-x64/{native}"),
+            format!("node_modules/@openai/codex-win32-x64/{native}"),
+            format!("node_modules/@openai/codex/{native}"),
+            "node_modules/@openai/codex/vendor/x86_64-pc-windows-msvc/codex/codex.exe".into(),
+        ] {
+            for cmd_shim_9 in [false, true] {
+                let dir = tempfile::tempdir().unwrap();
+                let exe = dir.path().join(&layout);
+                fs::create_dir_all(exe.parent().unwrap()).unwrap();
+                install(exe.parent().unwrap(), "codex.exe");
+                let shim = write_shim(
+                    dir.path(),
+                    &node_shim(r"node_modules\@openai\codex\bin\codex.js", cmd_shim_9),
+                );
+
+                assert_eq!(shim_target(&shim), Some(exe), "{layout}");
+            }
+        }
+    }
+
+    #[test]
+    fn rejects_shims_it_does_not_recognise() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = install(dir.path(), "tool.exe");
+        install(dir.path(), "tool.js");
+        // Each rejected target exists, so only the rule rejects it.
+        for sub in ["%TEMP%", "sub"] {
+            fs::create_dir(dir.path().join(sub)).unwrap();
+            install(&dir.path().join(sub), "tool.exe");
+        }
+        let rejected = [
+            direct_shim("tool.js"),
+            node_shim("tool.js", false),
+            direct_shim(r"%TEMP%\tool.exe"),
+            direct_shim(r"sub\..\tool.exe"),
+            direct_shim(r"\tool.exe"),
+            direct_shim("missing.exe"),
+            direct_shim("tool.exe")
+                .replace("CALL :find_dp0\r\n", "CALL :find_dp0\r\nSET PATH=x\r\n"),
+        ];
+
+        assert_eq!(
+            shim_target(&write_shim(dir.path(), &direct_shim("tool.exe"))),
+            Some(exe)
+        );
+        for contents in rejected {
+            assert_eq!(
+                shim_target(&write_shim(dir.path(), &contents)),
+                None,
+                "{contents}"
+            );
+        }
     }
 }

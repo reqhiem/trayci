@@ -1,4 +1,4 @@
-use super::common::resolve_executable;
+use super::common::resolve_installed;
 use regex::Regex;
 use serde_json::Value;
 use std::{
@@ -50,7 +50,10 @@ fn package_root(binary: &Path) -> Option<PathBuf> {
 }
 
 pub async fn extract(configured: Option<&Path>) -> Option<(String, String)> {
-    let binary = resolve_executable("gemini", configured).await?;
+    from_binary(resolve_installed("gemini", configured).await?)
+}
+
+pub(super) fn from_binary(binary: PathBuf) -> Option<(String, String)> {
     let resolved = fs::canonicalize(&binary).unwrap_or(binary);
     let bin = resolved.parent()?;
     let prefix = bin.parent()?;
