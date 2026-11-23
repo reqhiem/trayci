@@ -41,14 +41,11 @@ pub async fn resolve_executable(name: &str, configured: Option<&Path>) -> Option
 }
 
 fn find_in_dirs(name: &str, dirs: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
-    // Only `<name>.exe` on Windows: the extensionless script npm drops next to a `.cmd` shim is
-    // not runnable, and starting a `.cmd` through the PTY and killing its whole process tree is
-    // unverified (#83).
+    // `.exe` only: npm's extensionless script beside a `.cmd` shim can't run; `.cmd` is #83.
     let file_name = format!("{name}{}", env::consts::EXE_SUFFIX);
     let mut seen = HashSet::new();
     dirs.into_iter()
-        // An empty or relative `PATH` entry resolves against the working directory, where anyone
-        // can drop a `claude.exe`.
+        // A relative `PATH` entry resolves against the working directory: a planted binary.
         .filter(|dir| dir.is_absolute())
         .map(|dir| dir.join(&file_name))
         .find(|path| seen.insert(path.clone()) && executable(path))
@@ -70,8 +67,7 @@ fn executable(path: &Path) -> bool {
 }
 
 pub fn home_dir() -> Option<PathBuf> {
-    // On Windows the provider CLIs keep their installs and credentials under the profile, as
-    // Node's `os.homedir()` does; `HOME` comes from Git Bash or MSYS2 and can point elsewhere.
+    // Windows CLIs use the profile; a `HOME` from Git Bash or MSYS2 can point elsewhere.
     let [first, second] = if cfg!(windows) {
         ["USERPROFILE", "HOME"]
     } else {

@@ -19,8 +19,6 @@ pub fn config_directory() -> PathBuf {
     config_base().join("trayci")
 }
 
-/// The per-user directory that holds application config: `%APPDATA%` on Windows, the XDG config
-/// directory elsewhere.
 pub fn config_base() -> PathBuf {
     let env = |key: &str| std::env::var_os(key);
     if cfg!(windows) {
@@ -30,9 +28,7 @@ pub fn config_base() -> PathBuf {
     }
 }
 
-/// Windows does not define `HOME` outside Git Bash, so a `HOME`-based path would fall through to
-/// the temp directory, where Storage Sense can delete it. An empty value counts as unset: joined
-/// onto, it would give a path relative to wherever the app was started.
+/// Not `HOME`, which only Git Bash sets on Windows; an empty value would give a relative path.
 fn windows_config_base(env: impl Fn(&str) -> Option<OsString>) -> PathBuf {
     let env = |key: &str| env(key).filter(|value| !value.is_empty());
     env("APPDATA")
