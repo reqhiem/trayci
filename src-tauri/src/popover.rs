@@ -1,4 +1,7 @@
-use std::sync::Mutex;
+use std::{
+    sync::Mutex,
+    time::{Duration, Instant},
+};
 use tauri::{
     LogicalSize, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow,
     WebviewWindowBuilder, WindowEvent,
@@ -23,6 +26,8 @@ pub struct PopoverState {
     /// A drag waiting to be written to settings.
     pending: Mutex<Option<PhysicalPosition<i32>>>,
     scale: Mutex<f64>,
+    /// When losing focus last hid the popover; see `hidden_by_this_click`.
+    blurred_at: Mutex<Option<Instant>>,
 }
 
 impl Default for PopoverState {
@@ -34,6 +39,7 @@ impl Default for PopoverState {
             drag_origin: Mutex::new(None),
             pending: Mutex::new(None),
             scale: Mutex::new(1.0),
+            blurred_at: Mutex::new(None),
         }
     }
 }
@@ -88,9 +94,11 @@ pub fn create(app: &tauri::AppHandle) -> tauri::Result<WebviewWindow> {
         WindowEvent::Focused(false) => {
             // A window manager that grabs the pointer for an interactive move takes focus with it,
             // so a focus-out during a drag is not the user clicking away.
-            if app_handle.state::<PopoverState>().is_dragging() {
+            let state = app_handle.state::<PopoverState>();
+            if state.is_dragging() {
                 return;
             }
+            *state.blurred_at.lock().expect("popover blur lock") = Some(Instant::now());
             save_position(&app_handle);
             let _ = hide.hide();
         }
@@ -244,11 +252,30 @@ pub fn toggle(
     let Some(window) = app.get_webview_window(LABEL) else {
         return Ok(());
     };
+    let blurred_at = app
+        .state::<PopoverState>()
+        .blurred_at
+        .lock()
+        .expect("popover blur lock")
+        .take();
     if window.is_visible()? {
         save_position(app);
         return window.hide();
     }
+    if hidden_by_this_click(blurred_at, Instant::now()) {
+        return Ok(());
+    }
     show(app, position, tray_center)
+}
+
+/// Pressing the tray icon on Windows focuses the taskbar, so focus loss has already hidden an open
+/// popover by the time the click's release reaches `toggle`. Showing it again there would leave the
+/// icon unable to close it.
+// ponytail: fixed grace; a press held longer than this reopens the popover.
+const BLUR_GRACE: Duration = Duration::from_millis(300);
+
+fn hidden_by_this_click(blurred_at: Option<Instant>, now: Instant) -> bool {
+    blurred_at.is_some_and(|at| now.saturating_duration_since(at) < BLUR_GRACE)
 }
 
 pub fn show(
@@ -418,6 +445,14 @@ mod tests {
             position: PhysicalPosition::new(x, y),
             size: PhysicalSize::new(width, height),
         }
+    }
+
+    #[test]
+    fn a_tray_click_that_blurred_the_popover_does_not_reopen_it() {
+        let now = Instant::now();
+        assert!(hidden_by_this_click(Some(now), now + BLUR_GRACE / 2));
+        assert!(!hidden_by_this_click(Some(now), now + BLUR_GRACE));
+        assert!(!hidden_by_this_click(None, now));
     }
 
     #[test]
