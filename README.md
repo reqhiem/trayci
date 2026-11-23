@@ -115,7 +115,7 @@ pnpm dev
 | Terminal view, from source | `pnpm cli`                                                             |
 | Diagnostics from source    | `pnpm cli -- usage --json`, `pnpm cli -- doctor`                       |
 
-On Windows, CI runs `cargo clippy` and `cargo test` on the `trayci-core` crate only (`cargo test -p trayci-core` in `src-tauri/`). `pnpm cli` rebuilds `trayci.exe`, which Windows will not let it replace while `pnpm dev` is running; stop the dev app first, or run the built `src-tauri\target\debug\trayci.exe` directly.
+On Windows, `pnpm cli` rebuilds `trayci.exe`, which Windows will not let it replace while `pnpm dev` is running; stop the dev app first, or run the built `src-tauri\target\debug\trayci.exe` directly.
 
 Lefthook formats staged files with Prettier before each commit. Run `pnpm exec lefthook install` if the hook is missing.
 

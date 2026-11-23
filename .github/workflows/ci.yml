@@ -65,7 +65,9 @@ jobs:
             src-tauri/target/release/bundle/appimage/*.AppImage
           if-no-files-found: error
 
-  # The core crate has no Tauri dependency, so it builds and tests on Windows without WebView2.
+  # Lints the whole workspace so `cfg(windows)` code in the app crate is checked; bundle-win builds
+  # it without denying warnings. Tests stay on the core crate: the app crate's tests are
+  # platform-independent and already run in rust-linux.
   rust-windows:
     runs-on: windows-latest
     steps:
@@ -76,7 +78,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-      - run: cargo clippy -p trayci-core --all-targets -- -D warnings
+      - run: cargo clippy --workspace --all-targets -- -D warnings
         working-directory: src-tauri
       - run: cargo test -p trayci-core
         working-directory: src-tauri
