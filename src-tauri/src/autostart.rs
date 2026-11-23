@@ -11,9 +11,7 @@ fn path() -> PathBuf {
 /// which goes away with the process that mounted it.
 #[cfg(target_os = "linux")]
 pub fn executable() -> io::Result<std::path::PathBuf> {
-    std::env::var_os("APPIMAGE")
-        .map(std::path::PathBuf::from)
-        .map_or_else(std::env::current_exe, Ok)
+    trayci_core::providers::common::env_path("APPIMAGE").map_or_else(std::env::current_exe, Ok)
 }
 
 #[cfg(target_os = "linux")]

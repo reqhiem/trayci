@@ -180,22 +180,34 @@ fn executable(path: &Path) -> bool {
 }
 
 pub fn home_dir() -> Option<PathBuf> {
+    home_from(|key| env::var_os(key))
+}
+
+fn home_from(env: impl Fn(&str) -> Option<std::ffi::OsString>) -> Option<PathBuf> {
     // Windows CLIs use the profile; a `HOME` from Git Bash or MSYS2 can point elsewhere.
     let [first, second] = if cfg!(windows) {
         ["USERPROFILE", "HOME"]
     } else {
         ["HOME", "USERPROFILE"]
     };
-    env::var_os(first)
-        .or_else(|| env::var_os(second))
+    let env = |key: &str| env(key).filter(|value| !value.is_empty());
+    env(first).or_else(|| env(second)).map(PathBuf::from)
+}
+
+/// An empty value counts as unset: as a path it would resolve against the working directory.
+pub fn env_path(key: &str) -> Option<PathBuf> {
+    env::var_os(key)
+        .filter(|value| !value.is_empty())
         .map(PathBuf::from)
 }
 
 pub fn bounded_cwd() -> Result<PathBuf, ProviderError> {
-    let root = env::var_os("XDG_RUNTIME_DIR").map_or_else(
-        || env::temp_dir().join(format!("trayci-{}", user_id())),
-        |value| PathBuf::from(value).join("trayci"),
-    );
+    let root = env_path("XDG_RUNTIME_DIR")
+        .filter(|path| path.is_absolute())
+        .map_or_else(
+            || env::temp_dir().join(format!("trayci-{}", user_id())),
+            |path| path.join("trayci"),
+        );
     let directory = root.join("provider-probe");
     fs::create_dir_all(&directory).map_err(|error| {
         ProviderError::new(
@@ -546,6 +558,24 @@ mod tests {
             .next(),
             Some(expected)
         );
+    }
+
+    #[test]
+    fn home_prefers_the_platform_variable_and_skips_an_empty_one() {
+        let resolve = |home: &str, userprofile: &str| {
+            home_from(|key| match key {
+                "HOME" => Some(home.into()),
+                "USERPROFILE" => Some(userprofile.into()),
+                _ => None,
+            })
+        };
+
+        let preferred = if cfg!(windows) { "/profile" } else { "/home" };
+        assert_eq!(resolve("/home", "/profile"), Some(PathBuf::from(preferred)));
+        // Each host reads a different variable first, so each assert covers one of them.
+        assert_eq!(resolve("", "/profile"), Some(PathBuf::from("/profile")));
+        assert_eq!(resolve("/home", ""), Some(PathBuf::from("/home")));
+        assert_eq!(resolve("", ""), None);
     }
 
     #[test]
