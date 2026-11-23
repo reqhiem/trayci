@@ -65,7 +65,6 @@ jobs:
             src-tauri/target/release/bundle/appimage/*.AppImage
           if-no-files-found: error
 
-  # Same steps as rust-linux. The Cargo workspace is src-tauri, so rust-cache is pointed at it.
   rust-windows:
     runs-on: windows-latest
     steps:

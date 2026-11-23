@@ -26,7 +26,6 @@ pub struct PopoverState {
     /// A drag waiting to be written to settings.
     pending: Mutex<Option<PhysicalPosition<i32>>>,
     scale: Mutex<f64>,
-    /// When losing focus last hid the popover; see `hidden_by_this_click`.
     blurred_at: Mutex<Option<Instant>>,
 }
 
@@ -268,9 +267,7 @@ pub fn toggle(
     show(app, position, tray_center)
 }
 
-/// Pressing the tray icon on Windows focuses the taskbar, so focus loss has already hidden an open
-/// popover by the time the click's release reaches `toggle`. Showing it again there would leave the
-/// icon unable to close it.
+/// On Windows, a tray press blurs (and so hides) the popover before the click reaches `toggle`.
 // ponytail: fixed grace; a press held longer than this reopens the popover.
 const BLUR_GRACE: Duration = Duration::from_millis(300);
 

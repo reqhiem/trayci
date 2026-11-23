@@ -40,9 +40,8 @@ pub fn create(app: &tauri::AppHandle) -> tauri::Result<()> {
 
     #[cfg(any(target_os = "linux", windows))]
     let builder = {
-        // AppIndicator needs a menu to display the icon and does not emit tray click events. On
-        // Windows it lets you quit without opening the popover: it opens on right click and leaves
-        // the left click to toggle the popover. Linux ignores `show_menu_on_left_click`.
+        // AppIndicator needs a menu to display the icon and does not emit tray click events.
+        // Linux ignores `show_menu_on_left_click`.
         let show = MenuItem::with_id(app, "show", "Show Trayci", true, None::<&str>)?;
         let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
         let menu = Menu::with_items(app, &[&show, &quit])?;

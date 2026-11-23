@@ -313,7 +313,6 @@ fn strips_terminal_control_sequences() {
     );
 }
 
-/// These spawn `/bin/sleep` and read `/proc`, so they only exist on Unix.
 #[cfg(unix)]
 mod pty_children {
     use std::{path::Path, sync::Arc, time::Duration};
