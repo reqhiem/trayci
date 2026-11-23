@@ -66,8 +66,15 @@ fn executable(path: &Path) -> bool {
 }
 
 pub fn home_dir() -> Option<PathBuf> {
-    env::var_os("HOME")
-        .or_else(|| env::var_os("USERPROFILE"))
+    // On Windows the provider CLIs keep their installs and credentials under the profile, as
+    // Node's `os.homedir()` does; `HOME` comes from Git Bash or MSYS2 and can point elsewhere.
+    let [first, second] = if cfg!(windows) {
+        ["USERPROFILE", "HOME"]
+    } else {
+        ["HOME", "USERPROFILE"]
+    };
+    env::var_os(first)
+        .or_else(|| env::var_os(second))
         .map(PathBuf::from)
 }
 
