@@ -71,6 +71,7 @@ jobs:
 
   rust-windows:
     runs-on: windows-latest
+    timeout-minutes: 25 # cold ~13 min; a hung ConPTY test would otherwise burn 6 h
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
