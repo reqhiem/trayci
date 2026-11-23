@@ -1,6 +1,4 @@
 use serde_json::json;
-use std::{path::Path, sync::Arc, time::Duration};
-use tokio_util::sync::CancellationToken;
 use trayci_core::providers::{
     antigravity::{
         normalize_antigravity_quota, parse_agy_version, parse_antigravity_json,
@@ -8,7 +6,7 @@ use trayci_core::providers::{
     },
     claude::{normalize_claude_usage, parse_claude_usage},
     codex::{normalize_codex_rate_limits, parse_codex_usage},
-    common::{active_child_count, rate_limited, run_pty, strip_terminal_codes, PtyOptions},
+    common::{rate_limited, strip_terminal_codes},
 };
 use trayci_core::ProviderErrorKind;
 
@@ -316,73 +314,80 @@ fn strips_terminal_control_sequences() {
 }
 
 #[cfg(unix)]
-#[tokio::test]
-async fn pty_timeout_kills_and_untracks_child() {
-    let error = run_pty(PtyOptions {
-        executable: Path::new("/bin/sleep"),
-        args: &["10"],
-        input: "",
-        write_delay: Duration::ZERO,
-        completion_delay: Duration::ZERO,
-        timeout: Duration::from_millis(50),
-        cancellation: CancellationToken::new(),
-        complete: Arc::new(|_| false),
-    })
-    .await
-    .unwrap_err();
-    assert_eq!(error.kind, ProviderErrorKind::Timeout);
-    assert_eq!(active_child_count(), 0);
-    assert_eq!(
-        zombie_children(),
-        Vec::<u32>::new(),
-        "timed-out probe left a zombie"
-    );
+mod pty_children {
+    use std::{path::Path, sync::Arc, time::Duration};
+    use tokio_util::sync::CancellationToken;
+    use trayci_core::providers::common::{active_child_count, run_pty, PtyOptions};
+    use trayci_core::ProviderErrorKind;
 
-    let cancellation = CancellationToken::new();
-    let cancel = cancellation.clone();
-    tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(50)).await;
-        cancel.cancel();
-    });
-    let error = run_pty(PtyOptions {
-        executable: Path::new("/bin/sleep"),
-        args: &["10"],
-        input: "",
-        write_delay: Duration::ZERO,
-        completion_delay: Duration::ZERO,
-        timeout: Duration::from_secs(5),
-        cancellation,
-        complete: Arc::new(|_| false),
-    })
-    .await
-    .unwrap_err();
-    assert_eq!(error.kind, ProviderErrorKind::Aborted);
-    assert_eq!(active_child_count(), 0);
-    assert_eq!(
-        zombie_children(),
-        Vec::<u32>::new(),
-        "cancelled probe left a zombie"
-    );
-}
-
-/// Killing a child is not the same as reaping it: until the parent waits, the process stays in the
-/// table as `Z`. `active_child_count` cannot see that, so it is read straight from `/proc`.
-fn zombie_children() -> Vec<u32> {
-    let me = std::process::id();
-    let mut zombies: Vec<u32> = std::fs::read_dir("/proc")
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter_map(|entry| {
-            let pid = entry.file_name().to_str()?.parse::<u32>().ok()?;
-            // The comm field is parenthesised and may itself contain spaces and brackets.
-            let stat = std::fs::read_to_string(entry.path().join("stat")).ok()?;
-            let mut fields = stat.rsplit_once(')')?.1.split_whitespace();
-            let state = fields.next()?;
-            let parent = fields.next()?.parse::<u32>().ok()?;
-            (parent == me && state == "Z").then_some(pid)
+    #[tokio::test]
+    async fn pty_timeout_kills_and_untracks_child() {
+        let error = run_pty(PtyOptions {
+            executable: Path::new("/bin/sleep"),
+            args: &["10"],
+            input: "",
+            write_delay: Duration::ZERO,
+            completion_delay: Duration::ZERO,
+            timeout: Duration::from_millis(50),
+            cancellation: CancellationToken::new(),
+            complete: Arc::new(|_| false),
         })
-        .collect();
-    zombies.sort_unstable();
-    zombies
+        .await
+        .unwrap_err();
+        assert_eq!(error.kind, ProviderErrorKind::Timeout);
+        assert_eq!(active_child_count(), 0);
+        assert_eq!(
+            zombie_children(),
+            Vec::<u32>::new(),
+            "timed-out probe left a zombie"
+        );
+
+        let cancellation = CancellationToken::new();
+        let cancel = cancellation.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            cancel.cancel();
+        });
+        let error = run_pty(PtyOptions {
+            executable: Path::new("/bin/sleep"),
+            args: &["10"],
+            input: "",
+            write_delay: Duration::ZERO,
+            completion_delay: Duration::ZERO,
+            timeout: Duration::from_secs(5),
+            cancellation,
+            complete: Arc::new(|_| false),
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(error.kind, ProviderErrorKind::Aborted);
+        assert_eq!(active_child_count(), 0);
+        assert_eq!(
+            zombie_children(),
+            Vec::<u32>::new(),
+            "cancelled probe left a zombie"
+        );
+    }
+
+    /// Killing a child is not the same as reaping it: until the parent waits, the process stays in the
+    /// table as `Z`. `active_child_count` cannot see that, so it is read straight from `/proc`.
+    fn zombie_children() -> Vec<u32> {
+        let me = std::process::id();
+        let mut zombies: Vec<u32> = std::fs::read_dir("/proc")
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|entry| {
+                let pid = entry.file_name().to_str()?.parse::<u32>().ok()?;
+                // The comm field is parenthesised and may itself contain spaces and brackets.
+                let stat = std::fs::read_to_string(entry.path().join("stat")).ok()?;
+                let mut fields = stat.rsplit_once(')')?.1.split_whitespace();
+                let state = fields.next()?;
+                let parent = fields.next()?.parse::<u32>().ok()?;
+                (parent == me && state == "Z").then_some(pid)
+            })
+            .collect();
+        zombies.sort_unstable();
+        zombies
+    }
 }
