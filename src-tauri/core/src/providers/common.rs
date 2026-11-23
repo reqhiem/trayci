@@ -24,6 +24,22 @@ static CHILDREN: LazyLock<Mutex<HashMap<u64, Box<dyn Child + Send + Sync>>>> =
 static NEXT_CHILD: AtomicU64 = AtomicU64::new(1);
 
 pub async fn resolve_executable(name: &str, configured: Option<&Path>) -> Option<PathBuf> {
+    // `.exe` only: npm's extensionless script beside a `.cmd` shim can't run, and killing a
+    // timed-out `cmd.exe` leaves the `node.exe` it started running (#83).
+    resolve(name, &[env::consts::EXE_SUFFIX], configured)
+}
+
+/// Also finds npm's `.cmd` shim, to read the package installed beside it. Never spawn the result.
+pub async fn resolve_installed(name: &str, configured: Option<&Path>) -> Option<PathBuf> {
+    let suffixes: &[&str] = if cfg!(windows) {
+        &[".exe", ".cmd"]
+    } else {
+        &[""]
+    };
+    resolve(name, suffixes, configured)
+}
+
+fn resolve(name: &str, suffixes: &[&str], configured: Option<&Path>) -> Option<PathBuf> {
     if configured.is_some_and(executable) {
         return configured.map(Path::to_path_buf);
     }
@@ -37,17 +53,23 @@ pub async fn resolve_executable(name: &str, configured: Option<&Path>) -> Option
             home.join(".bun/bin"),
         ]);
     }
-    find_in_dirs(name, dirs)
+    find_in_dirs(name, suffixes, dirs)
 }
 
-fn find_in_dirs(name: &str, dirs: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
-    // `.exe` only: npm's extensionless script beside a `.cmd` shim can't run; `.cmd` is #83.
-    let file_name = format!("{name}{}", env::consts::EXE_SUFFIX);
+fn find_in_dirs(
+    name: &str,
+    suffixes: &[&str],
+    dirs: impl IntoIterator<Item = PathBuf>,
+) -> Option<PathBuf> {
     let mut seen = HashSet::new();
     dirs.into_iter()
         // A relative `PATH` entry resolves against the working directory: a planted binary.
         .filter(|dir| dir.is_absolute())
-        .map(|dir| dir.join(&file_name))
+        .flat_map(|dir| {
+            suffixes
+                .iter()
+                .map(move |suffix| dir.join(format!("{name}{suffix}")))
+        })
         .find(|path| seen.insert(path.clone()) && executable(path))
 }
 
@@ -412,7 +434,7 @@ mod tests {
         let installed = install(dir.path(), &format!("claude{EXE_SUFFIX}"));
 
         assert_eq!(
-            find_in_dirs("claude", [dir.path().to_path_buf()]),
+            find_in_dirs("claude", &[EXE_SUFFIX], [dir.path().to_path_buf()]),
             Some(installed)
         );
     }
@@ -427,6 +449,7 @@ mod tests {
         assert_eq!(
             find_in_dirs(
                 "claude",
+                &[EXE_SUFFIX],
                 [first.path().to_path_buf(), second.path().to_path_buf()]
             ),
             Some(expected)
@@ -437,7 +460,10 @@ mod tests {
     fn reports_nothing_when_no_directory_has_it() {
         let dir = tempfile::tempdir().unwrap();
 
-        assert_eq!(find_in_dirs("claude", [dir.path().to_path_buf()]), None);
+        assert_eq!(
+            find_in_dirs("claude", &[EXE_SUFFIX], [dir.path().to_path_buf()]),
+            None
+        );
     }
 
     #[test]
@@ -447,7 +473,7 @@ mod tests {
         install(dir.path(), &format!("claude{EXE_SUFFIX}"));
         let relative = dir.path().strip_prefix(&cwd).unwrap().to_path_buf();
 
-        assert_eq!(find_in_dirs("claude", [relative]), None);
+        assert_eq!(find_in_dirs("claude", &[EXE_SUFFIX], [relative]), None);
     }
 
     #[cfg(windows)]
@@ -457,7 +483,10 @@ mod tests {
         install(dir.path(), "codex");
         install(dir.path(), "codex.cmd");
 
-        assert_eq!(find_in_dirs("codex", [dir.path().to_path_buf()]), None);
+        assert_eq!(
+            find_in_dirs("codex", &[EXE_SUFFIX], [dir.path().to_path_buf()]),
+            None
+        );
     }
 
     #[cfg(unix)]
@@ -466,6 +495,40 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         fs::write(dir.path().join("claude"), b"stub").unwrap();
 
-        assert_eq!(find_in_dirs("claude", [dir.path().to_path_buf()]), None);
+        assert_eq!(
+            find_in_dirs("claude", &[EXE_SUFFIX], [dir.path().to_path_buf()]),
+            None
+        );
+    }
+
+    #[test]
+    fn reads_the_gemini_client_beside_an_npm_cmd_shim() {
+        // `npm install -g` on Windows: shims in `%APPDATA%\npm`, the package in `node_modules` there.
+        let npm = tempfile::tempdir().unwrap();
+        let package = npm.path().join("node_modules/@google/gemini-cli");
+        fs::create_dir_all(package.join("bundle")).unwrap();
+        fs::write(
+            package.join("package.json"),
+            r#"{"name":"@google/gemini-cli"}"#,
+        )
+        .unwrap();
+        fs::write(
+            package.join("bundle/chunk-UF44X63P.js"),
+            r#"var OAUTH_CLIENT_ID = "id"; var OAUTH_CLIENT_SECRET = "secret";"#,
+        )
+        .unwrap();
+        for shim in ["gemini", "gemini.cmd", "gemini.ps1"] {
+            install(npm.path(), shim);
+        }
+        let dirs = || [npm.path().to_path_buf()];
+
+        // What `resolve_executable` searches on Windows: a spawned CLI never resolves to a shim.
+        assert_eq!(find_in_dirs("gemini", &[".exe"], dirs()), None);
+        let shim = find_in_dirs("gemini", &[".exe", ".cmd"], dirs()).unwrap();
+        assert_eq!(shim, npm.path().join("gemini.cmd"));
+        assert_eq!(
+            super::super::google_oauth::from_binary(shim),
+            Some(("id".into(), "secret".into()))
+        );
     }
 }
