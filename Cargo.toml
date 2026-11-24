@@ -34,6 +34,8 @@ slint = { version = "~1.18", default-features = false, features = [
 ] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
 trayci-core = { path = "core" }
+# Ctrl+Alt+U (Windows uses the same crate).
+global-hotkey = "0.8"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # `async-io`, not the default `tokio`: zbus runs on one runtime for the whole tree, and Slint's
@@ -43,6 +45,9 @@ ksni = { version = "0.3", default-features = false, features = ["async-io"] }
 notify-rust = "4"
 # Already in the tree through Slint; decodes the tray icon for ksni.
 png = "0.18"
+# Already in the tree through winit: the work area, the pointer and a focus request muffin honours,
+# none of which winit exposes.
+x11rb = "0.13"
 
 # `AttachConsole` for CLI output from the GUI-subsystem exe, the work area and pointer for the
 # popover, the single-instance pipe, and the HKCU Run value for start at login (issue #52).

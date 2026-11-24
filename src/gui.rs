@@ -1,7 +1,7 @@
 //! The tray app: the usage service on a tokio runtime, the Slint popover on this thread, and the
 //! tray icon between them.
 use crate::{
-    autostart,
+    autostart, hotkey,
     popover::{self, Popover},
     single_instance, tray,
     ui::{self, Bridge},
@@ -43,13 +43,9 @@ pub fn run(runtime: Runtime) -> Result<(), Box<dyn Error>> {
     if let Err(error) = runtime.block_on(autostart::set_enabled(settings.start_on_login)) {
         eprintln!("trayci: could not update start on login: {error}");
     }
-    // A tray flyout, not an app window: no taskbar button.
-    #[cfg(windows)]
     slint::BackendSelector::new()
-        .with_winit_window_attributes_hook(|attributes| {
-            use slint::winit_030::winit::platform::windows::WindowAttributesExtWindows;
-            attributes.with_skip_taskbar(true)
-        })
+        .backend_name("winit".into())
+        .with_winit_window_attributes_hook(popover::window_attributes)
         .select()?;
     let ui = ui::Popover::new()?;
     let popover = Popover::new(&ui, settings.window_position);
@@ -72,6 +68,14 @@ pub fn run(runtime: Runtime) -> Result<(), Box<dyn Error>> {
     });
     app.render();
     bind(&ui, &app);
+    popover.on_save({
+        let app = Arc::downgrade(&app);
+        move |position| {
+            if let Some(app) = app.upgrade() {
+                app.update(position_patch(Some(position)));
+            }
+        }
+    });
 
     let (tooltips, tooltip) = watch::channel("Trayci".to_string());
     let notifier = Mutex::new(QuotaNotifier::default());
@@ -93,9 +97,13 @@ pub fn run(runtime: Runtime) -> Result<(), Box<dyn Error>> {
         }
     });
     tray::spawn(runtime.handle(), popover.clone(), tooltip);
-    instance.serve(move || {
+    let _shortcut = hotkey::register(popover.clone());
+    instance.serve({
         let popover = popover.clone();
-        let _ = slint::invoke_from_event_loop(move || popover.show(None));
+        move || {
+            let popover = popover.clone();
+            let _ = slint::invoke_from_event_loop(move || popover.show(None));
+        }
     });
     runtime.spawn({
         let service = Arc::clone(&service);
@@ -110,6 +118,17 @@ pub fn run(runtime: Runtime) -> Result<(), Box<dyn Error>> {
     });
 
     let result = slint::run_event_loop_until_quit();
+    // What `RunEvent::ExitRequested` did under Tauri, awaited here: `App::update` only spawns, and
+    // the runtime would drop the write.
+    if let Some(position) = popover.take_pending() {
+        let saved = runtime.block_on(async {
+            let patch = position_patch(Some(position));
+            app.repository.lock().await.update(patch).await
+        });
+        if let Err(error) = saved {
+            eprintln!("trayci: could not save the popover position: {error}");
+        }
+    }
     drop(subscription);
     runtime.block_on(service.stop());
     Ok(result?)
@@ -132,20 +151,20 @@ fn bind(ui: &ui::Popover, app: &Arc<App>) {
     bridge.on_set_position({
         let app = Arc::clone(app);
         move |x, y| {
-            app.update(TrayciSettingsPatch {
-                window_position: Some(Some((x, y))),
-                ..Default::default()
-            })
+            app.popover.place((x, y));
+            app.update(position_patch(Some((x, y))));
         }
     });
     bridge.on_reset_position({
         let app = Arc::clone(app);
         move || {
-            app.update(TrayciSettingsPatch {
-                window_position: Some(None),
-                ..Default::default()
-            })
+            app.popover.reanchor();
+            app.update(position_patch(None));
         }
+    });
+    bridge.on_begin_drag({
+        let popover = app.popover.clone();
+        move || popover.begin_drag()
     });
     bridge.on_hide({
         let popover = app.popover.clone();
@@ -199,7 +218,6 @@ impl App {
     fn update(self: &Arc<Self>, patch: TrayciSettingsPatch) {
         let app = Arc::clone(self);
         self.runtime.spawn(async move {
-            let position = patch.window_position;
             let previous = app.settings();
             let settings = match app.repository.lock().await.update(patch).await {
                 Ok(settings) => settings,
@@ -207,13 +225,6 @@ impl App {
             };
             *app.settings.lock().expect("settings lock") = settings.clone();
             app.show_error(String::new());
-            if let Some(position) = position {
-                let popover = app.popover.clone();
-                let _ = slint::invoke_from_event_loop(move || match position {
-                    Some(position) => popover.place(position),
-                    None => popover.reanchor(),
-                });
-            }
             if let Err(error) = autostart::set_enabled(settings.start_on_login).await {
                 app.show_error(error.to_string());
             }
@@ -256,6 +267,13 @@ fn notify(runtime: &Handle, request: NotificationRequest) {
             eprintln!("trayci: notification failed: {error}");
         }
     });
+}
+
+fn position_patch(position: Option<(i32, i32)>) -> TrayciSettingsPatch {
+    TrayciSettingsPatch {
+        window_position: Some(position),
+        ..Default::default()
+    }
 }
 
 fn now_ms() -> u64 {

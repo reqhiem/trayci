@@ -63,7 +63,7 @@ pub fn spawn(_runtime: &Handle, popover: Popover, mut tooltips: watch::Receiver<
                     PhysicalPosition::new(position.x, position.y)
                 };
                 let popover = popover.clone();
-                let _ = slint::invoke_from_event_loop(move || popover.toggle(anchor));
+                let _ = slint::invoke_from_event_loop(move || popover.toggle(Some(anchor)));
             }
         }));
         let (show, quit) = (show.into_id(), quit.into_id());

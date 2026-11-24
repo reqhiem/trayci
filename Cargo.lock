@@ -1607,6 +1607,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
+name = "global-hotkey"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8c386b0a4a70cb2d39fffd74480f985b6f0bfbcb934b6a6b6b7e630e448f242e"
+dependencies = [
+ "crossbeam-channel",
+ "keyboard-types",
+ "objc2 0.6.4",
+ "objc2-app-kit 0.3.2",
+ "once_cell",
+ "thiserror 2.0.20",
+ "windows-sys 0.59.0",
+ "x11rb",
+ "xkeysym",
+]
+
+[[package]]
 name = "glow"
 version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5243,6 +5260,7 @@ name = "trayci"
 version = "0.5.3"
 dependencies = [
  "embed-resource",
+ "global-hotkey",
  "ksni",
  "notify-rust",
  "png",
@@ -5253,6 +5271,7 @@ dependencies = [
  "trayci-core",
  "windows-sys 0.61.2",
  "winreg 0.10.1",
+ "x11rb",
 ]
 
 [[package]]
