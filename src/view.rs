@@ -414,6 +414,24 @@ mod tests {
     }
 
     #[test]
+    fn an_edit_made_before_the_last_save_shows_keeps_that_save() {
+        let shown = TrayciSettings::default();
+        let mut first = settings(&shown, true);
+        first.theme = "light".into();
+        let mut saved = shown.clone();
+        trayci_core::settings::merge(&mut saved, patch(&shown, &first)).expect("valid patch");
+
+        // Made from the view that still shows the old theme.
+        let mut second = settings(&shown, true);
+        second.font_scale = 1.3;
+        let edit = patch(&shown, &second);
+        assert_eq!(edit.theme, None);
+        trayci_core::settings::merge(&mut saved, edit).expect("valid patch");
+        assert_eq!(saved.theme, trayci_core::Theme::Light);
+        assert_eq!(saved.font_scale, 1.3);
+    }
+
+    #[test]
     fn provider_switches_and_order_patch_only_when_moved() {
         let current = TrayciSettings::default();
         let mut edited = settings(&current, true);

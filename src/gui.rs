@@ -31,6 +31,9 @@ struct App {
     service: Arc<UsageService>,
     repository: AsyncMutex<SettingsRepository>,
     settings: Arc<Mutex<TrayciSettings>>,
+    /// What the bridge last showed. Edits are diffed against it, not against the saved settings:
+    /// those can be one save ahead of what the edit was made from, and the diff would revert it.
+    shown: Mutex<Option<TrayciSettings>>,
     state: Mutex<UsageState>,
 }
 
@@ -60,6 +63,7 @@ pub fn run(runtime: Runtime) -> Result<(), Box<dyn Error>> {
         service: Arc::clone(&service),
         repository: AsyncMutex::new(repository),
         settings,
+        shown: Mutex::default(),
         state: Mutex::default(),
     });
     app.render();
@@ -119,7 +123,11 @@ fn bind(ui: &ui::Popover, app: &Arc<App>) {
     });
     bridge.on_update_settings({
         let app = Arc::clone(app);
-        move |edited| app.update(view::patch(&app.settings(), &edited))
+        move |edited| {
+            let shown = app.shown.lock().expect("shown lock").clone();
+            let shown = shown.unwrap_or_else(|| app.settings());
+            app.update(view::patch(&shown, &edited))
+        }
     });
     bridge.on_set_position({
         let app = Arc::clone(app);
@@ -173,7 +181,13 @@ impl App {
                 .unwrap_or_default()
                 .into(),
         );
-        bridge.set_settings(view::settings(&settings, popover::positions_are_real()));
+        let mut shown = self.shown.lock().expect("shown lock");
+        // Setting an equal struct still replaces the providers model, which rebuilds their rows
+        // and drops the keyboard focus on them.
+        if shown.as_ref() != Some(&settings) {
+            bridge.set_settings(view::settings(&settings, popover::positions_are_real()));
+            *shown = Some(settings);
+        }
     }
 
     fn render_later(self: &Arc<Self>) {
@@ -192,12 +206,19 @@ impl App {
         let app = Arc::clone(self);
         self.runtime.spawn(async move {
             let position = patch.window_position;
-            let previous = app.settings();
-            let settings = match app.repository.lock().await.update(patch).await {
-                Ok(settings) => settings,
-                Err(error) => return app.show_error(error.to_string()),
+            // Read and stored under the repository lock: with two quick edits, a `previous` read
+            // outside it can already hold the other save, and a provider switch would then not
+            // count as a change.
+            let (previous, settings) = {
+                let mut repository = app.repository.lock().await;
+                let previous = repository.get();
+                let settings = match repository.update(patch).await {
+                    Ok(settings) => settings,
+                    Err(error) => return app.show_error(error.to_string()),
+                };
+                *app.settings.lock().expect("settings lock") = settings.clone();
+                (previous, settings)
             };
-            *app.settings.lock().expect("settings lock") = settings.clone();
             app.show_error(String::new());
             if let Some(position) = position {
                 let popover = app.popover.clone();
