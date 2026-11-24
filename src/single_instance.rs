@@ -1,6 +1,18 @@
 //! One tray app per config dir: a second launch asks the first to show its popover, then exits.
 //! It is also how to open the popover without the tray: run `trayci tray` again.
 
+/// FNV-1a of the config dir, which keys the socket or pipe name. Not `DefaultHasher`: it may change
+/// between Rust releases, and two builds would then miss each other.
+fn config_hash(config_base: &std::path::Path) -> u64 {
+    config_base
+        .as_os_str()
+        .as_encoded_bytes()
+        .iter()
+        .fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+            (hash ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3)
+        })
+}
+
 #[cfg(target_os = "linux")]
 pub use linux::claim;
 
@@ -77,17 +89,9 @@ mod linux {
     }
 
     /// One socket per config dir, so a test run with its own `XDG_CONFIG_HOME` is its own
-    /// instance. The name hashes the dir to stay under the 108-byte socket path limit, with FNV-1a
-    /// because `DefaultHasher` may change between Rust releases and two builds would then miss
-    /// each other.
+    /// instance. The name hashes the dir to stay under the 108-byte socket path limit.
     fn socket_path(runtime_dir: &Path, config_base: &Path) -> PathBuf {
-        let hash = config_base
-            .as_os_str()
-            .as_encoded_bytes()
-            .iter()
-            .fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
-                (hash ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3)
-            });
+        let hash = super::config_hash(config_base);
         runtime_dir.join(format!("trayci-{hash:016x}.sock"))
     }
 
@@ -122,7 +126,6 @@ pub use windows::claim;
 mod windows {
     use std::{
         fs::{File, OpenOptions},
-        hash::{DefaultHasher, Hash, Hasher},
         io::{self, Read, Write},
         os::windows::io::{AsRawHandle, FromRawHandle},
         sync::{Arc, Mutex},
@@ -237,9 +240,8 @@ mod windows {
     /// Pipe names are machine-wide and cannot hold a backslash, so the name is a hash of the
     /// config dir: one instance per user, and one per config dir when testing.
     fn name() -> String {
-        let mut hasher = DefaultHasher::new();
-        trayci_core::settings::config_base().hash(&mut hasher);
-        format!(r"\\.\pipe\trayci-{:016x}", hasher.finish())
+        let hash = super::config_hash(&trayci_core::settings::config_base());
+        format!(r"\\.\pipe\trayci-{hash:016x}")
     }
 
     #[cfg(test)]
