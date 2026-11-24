@@ -26,9 +26,12 @@ component Name inherits Text {
 }
 
 // The number beside a meter. Red once the window is nearly spent, whichever way it counts.
+// A minimum width, not a fixed one: "100%" (remaining, on a fresh window) is wider than the
+// two-digit cell Figma draws, and must not be elided.
 component Percent inherits Small {
     in property <MeterView> meter;
     text: self.meter.percent;
+    overflow: clip;
     color: self.meter.severity == Severity.critical ? Theme.meter-critical : Theme.paper;
     font-weight: 550;
     horizontal-alignment: right;
@@ -64,7 +67,7 @@ component RowMeter inherits HorizontalLayout {
         }
     }
     Percent {
-        width: 26px * Theme.scale;
+        min-width: 26px * Theme.scale;
         meter: root.meter;
     }
 }
