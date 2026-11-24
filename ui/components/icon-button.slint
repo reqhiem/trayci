@@ -15,10 +15,13 @@ export component TipBox inherits Rectangle {
         padding-right: 7px * Theme.scale;
         padding-top: 4px * Theme.scale;
         padding-bottom: 4px * Theme.scale;
+        // Wrapped: a pooled models list runs wider than the popover and would be cut at its edges.
         Text {
             text: root.text;
             color: Theme.paper;
             font-size: 11px * Theme.scale;
+            max-width: 260px * Theme.scale;
+            wrap: word-wrap;
         }
     }
 }
