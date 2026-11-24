@@ -1,0 +1,94 @@
+import "fonts/SpaceGrotesk.ttf";
+import { Bridge } from "bridge.slint";
+import { Theme } from "theme.slint";
+import { Topbar } from "topbar.slint";
+import { UsageView, DetailPane } from "usage.slint";
+import { KeyboardFocus } from "components/icon-button.slint";
+import { SettingsPage } from "settings.slint";
+
+export { Bridge, Severity, MeterView, MeterLine, ProviderView, ProviderSetting, SettingsView } from "bridge.slint";
+export { Theme } from "theme.slint";
+
+export component Popover inherits Window {
+    no-frame: true;
+    always-on-top: true;
+    title: "Trayci";
+    background: Theme.ink;
+    default-font-family: "Space Grotesk";
+    default-font-size: 12px * Theme.scale;
+
+    out property <bool> detail-open: !Bridge.settings-open && (Bridge.pinned != "" || Bridge.hovered != "");
+
+    // A 360px column plus a 300px detail pane (Figma); the pane scrolls within the column's height.
+    width: (detail-open ? 660px : 360px) * Theme.scale;
+    height: topbar.height + (Bridge.settings-open ? settings.preferred-height : usage.master-height);
+
+    forward-focus: scope;
+
+    // Closing the pane, by a hide or by the pointer leaving, takes its focused toggle with it.
+    changed detail-open => {
+        if !self.detail-open && KeyboardFocus.owner == "toggle" {
+            scope.focus();
+        }
+    }
+
+    scope := FocusScope {
+        // Holds the focus between the controls, for Escape, without being a Tab stop of its own.
+        focus-on-tab-navigation: false;
+        focus-gained => {
+            KeyboardFocus.owner = "";
+        }
+        key-pressed(event) => {
+            if event.text != Key.Escape {
+                return reject;
+            }
+            if Bridge.pinned != "" {
+                Bridge.pinned = "";
+            } else {
+                Bridge.hide();
+            }
+            accept
+        }
+
+        // Hover is only dropped when the pointer leaves the whole popover, not a row.
+        TouchArea {
+            changed has-hover => {
+                if !self.has-hover {
+                    Bridge.hovered = "";
+                }
+            }
+
+            // `x: 0`: Slint centres a narrower child; the column must stay put as the pane opens.
+            topbar := Topbar {
+                x: 0;
+                y: 0;
+                width: 360px * Theme.scale;
+                focus-root => {
+                    scope.focus();
+                }
+            }
+            usage := UsageView {
+                x: 0;
+                y: topbar.height;
+                width: 360px * Theme.scale;
+                visible: !Bridge.settings-open;
+            }
+            settings := SettingsPage {
+                x: 0;
+                y: topbar.height;
+                width: 360px * Theme.scale;
+                visible: Bridge.settings-open;
+            }
+            if root.detail-open : DetailPane {
+                x: 360px * Theme.scale;
+                width: 300px * Theme.scale;
+            }
+        }
+
+        // The popover's outline (Figma screens).
+        Rectangle {
+            border-width: 1px;
+            border-color: Theme.line;
+        }
+    }
+}

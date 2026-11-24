@@ -9,9 +9,10 @@
 #   TRAYCI_FORMAT       deb or appimage (default: deb where apt-get exists)
 #   TRAYCI_INSTALL_DIR  where the AppImage goes, as `trayci` (default: ~/.local/bin)
 #
-# The .deb goes through `sudo apt-get install`, which pulls in WebKitGTK and adds
-# the menu entry. The AppImage needs no root, but does need libfuse2. Every
-# download is checked against the SHA-256 digest GitHub records for the asset.
+# The .deb goes through `sudo apt-get install`, which pulls in the X11, Wayland
+# and GL libraries it needs and adds the menu entry. The AppImage needs no root,
+# but does need libfuse2. Every download is checked against the SHA-256 digest
+# GitHub records for the asset.
 set -eu
 
 repo="reqhiem/trayci"

@@ -1,0 +1,31 @@
+import { Severity } from "../bridge.slint";
+import { Theme } from "../theme.slint";
+
+// Always shows use, even when the number beside it counts what remains.
+export component Meter inherits Rectangle {
+    in property <float> used;       // 0..100
+    in property <Severity> severity;
+    in property <string> label;     // the window's detail label
+
+    height: 3px * Theme.scale;
+    border-radius: self.height / 2;
+    background: Theme.tint;
+    clip: true;
+
+    accessible-role: progress-indicator;
+    accessible-label: root.label + " used";
+    accessible-value: Math.round(root.used);
+    accessible-value-minimum: 0;
+    accessible-value-maximum: 100;
+
+    Rectangle {
+        x: 0;
+        // A spent-nothing window keeps a stub, so the bar never reads as missing.
+        width: max(2px, parent.width * root.used / 100);
+        border-radius: parent.border-radius;
+        background: root.severity == Severity.critical ? Theme.meter-critical
+            : root.severity == Severity.high ? Theme.meter-high
+            : root.severity == Severity.medium ? Theme.meter-medium
+            : Theme.meter-low;
+    }
+}

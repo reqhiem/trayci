@@ -1,0 +1,124 @@
+import { Theme } from "../theme.slint";
+
+// Tooltip content in Theme colours: the built-in text tooltip follows the std-widgets Palette.
+export component TipBox inherits Rectangle {
+    in property <string> text;
+
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.line;
+    border-radius: 5px * Theme.scale;
+
+    HorizontalLayout {
+        padding-left: 7px * Theme.scale;
+        padding-right: 7px * Theme.scale;
+        padding-top: 4px * Theme.scale;
+        padding-bottom: 4px * Theme.scale;
+        // Wrapped: a pooled models list runs wider than the popover and would be cut at its edges.
+        Text {
+            text: root.text;
+            color: Theme.paper;
+            font-size: 11px * Theme.scale;
+            max-width: 260px * Theme.scale;
+            wrap: word-wrap;
+        }
+    }
+}
+
+// The KeyFocus the keyboard was last on, so rebuilt or re-shown elements can take it back: a
+// removed or hidden focus gets no keys. Only gaining focus writes it, as hiding also unfocuses.
+export global KeyboardFocus {
+    in-out property <string> owner;
+}
+
+// Keyboard access over a clickable element: Tab, Space/Enter and an inset focus ring. Clicks don't
+// focus it (like :focus-visible); other keys pass on, so Escape still reaches the popover.
+export component KeyFocus inherits FocusScope {
+    in property <length> radius;
+    // What KeyboardFocus.owner reads while the keyboard is here.
+    in property <string> name;
+    callback activated;
+
+    changed has-focus => {
+        if self.has-focus {
+            KeyboardFocus.owner = root.name;
+        }
+    }
+
+    focus-on-click: false;
+    key-pressed(event) => {
+        if event.text == Key.Space || event.text == Key.Return {
+            root.activated();
+            return accept;
+        }
+        reject
+    }
+
+    if root.has-focus : Rectangle {
+        border-width: 2px;
+        border-color: Theme.accent;
+        border-radius: root.radius;
+    }
+}
+
+// A header button.
+export component IconButton inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    in property <string> tip;
+    in property <bool> pressed;
+    in property <bool> enabled: true;
+    in property <bool> spinning;
+    out property <bool> has-focus: key.has-focus;
+    callback clicked;
+
+    forward-focus: key;
+    width: 20px * Theme.scale;
+    height: 24px * Theme.scale;
+    border-radius: 5px * Theme.scale;
+    background: root.pressed || (touch.has-hover && root.enabled) ? Theme.tint : transparent;
+    opacity: root.enabled ? 1 : 0.55;
+
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-enabled: root.enabled;
+    accessible-action-default => {
+        if root.enabled {
+            root.clicked();
+        }
+    }
+
+    Image {
+        width: parent.width;
+        height: parent.height;
+        source: root.icon;
+        colorize: root.pressed || (touch.has-hover && root.enabled) ? Theme.paper : Theme.muted;
+        // The refresh glyph's own centre, so it turns in place.
+        transform-origin: { x: self.width * 0.515, y: self.height * 0.536 };
+        transform-rotation: root.spinning ? animation-tick() / 0.8s * 360deg : 0deg;
+        accessible-role: none;
+    }
+
+    // Focusable while disabled: refresh disables itself when activated, and Escape needs a focus.
+    key := KeyFocus {
+        radius: root.border-radius;
+        activated => {
+            if root.enabled {
+                root.clicked();
+            }
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    if root.tip != "" : Tooltip {
+        TipBox {
+            text: root.tip;
+        }
+    }
+}

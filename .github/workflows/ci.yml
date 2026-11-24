@@ -16,62 +16,41 @@ permissions:
   contents: read
 
 jobs:
-  frontend:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm format:check
-      - run: pnpm lint
-      - run: pnpm typecheck
-      - run: pnpm test
-      - run: pnpm build
-
   rust-linux:
     runs-on: ubuntu-24.04 # matches release.yml's build-linux
     steps:
       - uses: actions/checkout@v6
-      - name: Install Tauri system dependencies
+      - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y build-essential pkg-config libfontconfig1-dev libxkbcommon-dev
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
           # On a key miss a PR would save ~1 GB that only that PR can read; PRs restore main's instead.
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo fmt --check
-        working-directory: src-tauri
       - run: cargo clippy --workspace --all-targets -- -D warnings
-        working-directory: src-tauri
       - run: cargo test --workspace
-        working-directory: src-tauri
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v6
+      # Pinned: the bundle names the Makefile renames and the NSIS uninstall hook are this version's.
+      - uses: taiki-e/install-action@v2
         with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm dist:linux
+          tool: cargo-packager@0.11.8
+      - run: make bundle-linux
       - uses: actions/upload-artifact@v7
         with:
           name: trayci-linux-${{ github.sha }}
-          path: |
-            src-tauri/target/release/bundle/deb/*.deb
-            src-tauri/target/release/bundle/appimage/*.AppImage
+          path: dist/*
           if-no-files-found: error
 
   rust-windows:
     runs-on: windows-latest
     timeout-minutes: 25 # cold ~13 min; a hung ConPTY test would otherwise burn 6 h
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -79,21 +58,21 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo clippy --workspace --all-targets -- -D warnings
-        working-directory: src-tauri
       - run: cargo test --workspace
-        working-directory: src-tauri
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v6
+      - uses: taiki-e/install-action@v2
         with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm dist:win
+          tool: cargo-packager@0.11.8
+      # The Makefile's bundle-win, without counting on make being on the Windows runner.
+      - name: Bundle
+        run: |
+          cargo packager --release --formats nsis
+          version="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "trayci") | .version')"
+          mkdir -p dist
+          mv "target/release/trayci_${version}_x64-setup.exe" "dist/Trayci_${version}_x64-setup.exe"
       - uses: actions/upload-artifact@v7
         with:
           name: trayci-win-${{ github.sha }}
-          path: src-tauri/target/release/bundle/nsis/*.exe
+          path: dist/*
           if-no-files-found: error

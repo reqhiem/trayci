@@ -1,0 +1,462 @@
+// The usage view and its detail pane (Figma ProviderRow, DetailPane). Rows set Bridge.hovered and
+// Bridge.pinned by provider id; app.slint clears the hover when the pointer leaves the popover.
+import { Bridge, MeterLine, MeterView, ProviderView, Severity, SettingsView } from "bridge.slint";
+import { Theme } from "theme.slint";
+import { Meter } from "components/meter.slint";
+import { ProviderIcon } from "components/provider-icon.slint";
+import { KeyboardFocus, KeyFocus, TipBox } from "components/icon-button.slint";
+
+
+// 11px on Figma's 14px line. Preferred, not fixed: a fixed-height item top-aligns in a taller cell.
+component Small inherits Text {
+    color: Theme.muted;
+    font-size: 11px * Theme.scale;
+    min-height: 0;
+    preferred-height: 14px * Theme.scale;
+    vertical-alignment: center;
+    overflow: elide;
+}
+
+component Name inherits Text {
+    color: Theme.paper;
+    font-size: 13px * Theme.scale;
+    font-weight: 500;
+    vertical-alignment: center;
+}
+
+// Red once nearly spent, either way it counts. A min width, not fixed: "100%" is wider than
+// Figma's two-digit cell and must not elide.
+component Percent inherits Small {
+    in property <MeterView> meter;
+    text: self.meter.percent;
+    overflow: clip;
+    color: self.meter.severity == Severity.critical ? Theme.meter-critical : Theme.paper;
+    font-weight: 550;
+    horizontal-alignment: right;
+}
+
+component Chevron inherits Image {
+    width: 6px * Theme.scale;
+    image-fit: contain;
+    source: @image-url("icons/chevron.svg");
+    colorize: Theme.muted;
+    accessible-role: none;
+}
+
+component Spacer inherits Rectangle {
+    horizontal-stretch: 1;
+}
+
+component RowMeter inherits HorizontalLayout {
+    in property <MeterView> meter;
+    spacing: 6px * Theme.scale;
+    Small {
+        text: root.meter.row-label;
+        horizontal-stretch: 1;
+    }
+    VerticalLayout {
+        alignment: center;
+        Meter {
+            width: 46px * Theme.scale;
+            used: root.meter.used;
+            severity: root.meter.severity;
+            label: root.meter.detail-label;
+        }
+    }
+    Percent {
+        min-width: 26px * Theme.scale;
+        meter: root.meter;
+    }
+}
+
+component ProviderRow inherits Rectangle {
+    in property <ProviderView> provider;
+    property <bool> compact: Bridge.settings.compact;
+    property <bool> pinned: Bridge.pinned == self.provider.id;
+    property <[MeterLine]> lines: self.compact ? [] : self.provider.lines;
+
+    background: self.pinned ? Theme.tint
+        : Bridge.hovered == self.provider.id ? Theme.tint-soft
+        : transparent;
+
+    accessible-role: button;
+    accessible-label: self.provider.name;
+    accessible-expandable: true;
+    accessible-expanded: self.pinned;
+    accessible-action-default => {
+        root.toggle-pin();
+    }
+
+    function toggle-pin() {
+        Bridge.pinned = root.pinned ? "" : root.provider.id;
+    }
+
+    TouchArea {
+        clicked => {
+            root.toggle-pin();
+        }
+        // Only entering moves the hover: the pane appearing under the pointer is not a row exit.
+        changed has-hover => {
+            if self.has-hover {
+                Bridge.hovered = root.provider.id;
+            }
+        }
+    }
+
+    VerticalLayout {
+        padding-left: 10px * Theme.scale;
+        padding-right: 10px * Theme.scale;
+        padding-top: (root.compact ? 8px : 10px) * Theme.scale;
+        // The hairline below sits inside the row's height.
+        padding-bottom: (root.compact ? 8px : 10px) * Theme.scale + 1px;
+
+        HorizontalLayout {
+            spacing: 8px * Theme.scale;
+            ProviderIcon {
+                provider: root.provider.id;
+            }
+            Name {
+                text: root.provider.name;
+            }
+            if root.provider.plan != "" : Small {
+                text: root.provider.plan;
+                overflow: clip;
+            }
+            Spacer { }
+            if !root.compact && root.provider.summary != "" : Small {
+                text: root.provider.summary-stale ? root.provider.summary : "resets in " + root.provider.summary;
+                color: root.provider.summary-stale ? Theme.warning : Theme.muted;
+            }
+            if root.compact && root.provider.failed : Small {
+                text: root.provider.message;
+            }
+            if root.compact && !root.provider.failed : HorizontalLayout {
+                horizontal-stretch: 0;
+                spacing: 8px * Theme.scale;
+                Small {
+                    text: root.provider.summary;
+                    color: root.provider.summary-stale ? Theme.warning : Theme.muted;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Meter {
+                        width: 40px * Theme.scale;
+                        used: root.provider.tightest.used;
+                        severity: root.provider.tightest.severity;
+                        label: root.provider.tightest.detail-label;
+                    }
+                }
+                // As wide as a two-digit percent, so a one-digit one keeps the bars aligned.
+                Percent {
+                    min-width: 22px * Theme.scale;
+                    meter: root.provider.tightest;
+                }
+            }
+            Chevron { }
+        }
+
+        VerticalLayout {
+            padding-top: root.lines.length > 0 ? 8px * Theme.scale : 0;
+            spacing: 6px * Theme.scale;
+            for line in root.lines : HorizontalLayout {
+                alignment: start;
+                spacing: 12px * Theme.scale;
+                RowMeter {
+                    width: (line.left.wide ? 340px : 164px) * Theme.scale;
+                    meter: line.left;
+                }
+                if line.has-right : RowMeter {
+                    width: 164px * Theme.scale;
+                    meter: line.right;
+                }
+            }
+        }
+
+        if !root.compact && root.provider.failed : HorizontalLayout {
+            padding-top: 8px * Theme.scale;
+            Small {
+                text: root.provider.message;
+            }
+        }
+    }
+
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.line;
+    }
+
+    // Tabbing to a row reveals its detail pane, as hovering does. Getting the focus back, when the
+    // popover reopens or the row is rebuilt, does not: the popover reopens without a pane.
+    KeyFocus {
+        name: "row:" + root.provider.id;
+        // Rebuilt with every providers model: the new row takes the keyboard back, unless settings
+        // show, where a stale token would steal it from a settings control.
+        init => {
+            if KeyboardFocus.owner == self.name && !Bridge.settings-open {
+                self.focus();
+            }
+        }
+        focus-gained(reason) => {
+            if reason == FocusReason.tab-navigation {
+                // Before the pane changes: its toggle reclaims focus while the token still reads
+                // "toggle", which would bounce a Shift+Tab off this row.
+                KeyboardFocus.owner = self.name;
+                Bridge.hovered = root.provider.id;
+            }
+        }
+        activated => {
+            root.toggle-pin();
+        }
+    }
+}
+
+export component UsageView inherits Rectangle {
+    out property <length> master-height: list.preferred-height;
+
+    list := VerticalLayout {
+        alignment: start;
+        // Collapsed, not behind an `if`, where Slint measures wrapped text at the wrong width.
+        Rectangle {
+            height: Bridge.error != "" ? self.preferred-height : 0;
+            visible: Bridge.error != "";
+            HorizontalLayout {
+                padding: 7px * Theme.scale;
+                Rectangle {
+                    border-width: 1px;
+                    border-color: Theme.accent-line;
+                    border-radius: 6px * Theme.scale;
+                    background: Theme.accent-fill;
+                    HorizontalLayout {
+                        padding-left: 9px * Theme.scale;
+                        padding-right: 9px * Theme.scale;
+                        padding-top: 7px * Theme.scale;
+                        padding-bottom: 7px * Theme.scale;
+                        Text {
+                            text: Bridge.error;
+                            color: Theme.danger;
+                            font-size: 11px * Theme.scale;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+            }
+        }
+        for provider in Bridge.providers : ProviderRow {
+            provider: provider;
+        }
+        if Bridge.providers.length == 0 : HorizontalLayout {
+            padding-left: 12px * Theme.scale;
+            padding-top: 14px * Theme.scale;
+            padding-bottom: 14px * Theme.scale;
+            Small {
+                text: "No providers enabled.";
+            }
+        }
+    }
+}
+
+component DetailEntry inherits Rectangle {
+    in property <MeterView> meter;
+
+    VerticalLayout {
+        spacing: 6px * Theme.scale;
+        HorizontalLayout {
+            Small {
+                text: root.meter.detail-label;
+                color: Theme.paper;
+                font-weight: 550;
+                overflow: clip;
+            }
+            if root.meter.resets != "" : Small {
+                text: " · " + root.meter.resets;
+            }
+            Spacer { }
+            Percent {
+                meter: root.meter;
+            }
+        }
+        Meter {
+            height: 4px * Theme.scale;
+            used: root.meter.used;
+            severity: root.meter.severity;
+            label: root.meter.detail-label;
+        }
+    }
+
+    if root.meter.models != "" : Tooltip {
+        TipBox {
+            text: root.meter.models;
+        }
+    }
+}
+
+component Detail inherits Rectangle {
+    in property <ProviderView> provider;
+    property <SettingsView> edited;
+
+    accessible-role: complementary;
+    accessible-label: root.provider.name + " details";
+
+    VerticalLayout {
+    padding-left: 14px * Theme.scale;
+    padding-right: 14px * Theme.scale;
+    padding-top: 12px * Theme.scale;
+    padding-bottom: 14px * Theme.scale;
+
+    VerticalLayout {
+        spacing: 2px * Theme.scale;
+        HorizontalLayout {
+            spacing: 8px * Theme.scale;
+            // Wrapped: a fixed-height item caps the whole line's height, and the toggle is taller.
+            VerticalLayout {
+                alignment: center;
+                ProviderIcon {
+                    width: 16px * Theme.scale;
+                    provider: root.provider.id;
+                }
+            }
+            Name {
+                text: root.provider.name;
+            }
+            if root.provider.plan != "" : Small {
+                text: root.provider.plan;
+                overflow: clip;
+            }
+            Spacer { }
+            toggle := Rectangle {
+                border-width: 1px;
+                border-color: Theme.line;
+                border-radius: 5px * Theme.scale;
+                background: toggle-touch.has-hover ? Theme.tint : transparent;
+                accessible-role: button;
+                accessible-label: Bridge.settings.show-remaining ? "Remaining, show used" : "Used, show remaining";
+                accessible-action-default => {
+                    root.flip-percentage();
+                }
+                // Figma's padding sits inside the 1px border.
+                HorizontalLayout {
+                    padding-left: 6px * Theme.scale + 1px;
+                    padding-right: 6px * Theme.scale + 1px;
+                    padding-top: 3px * Theme.scale + 1px;
+                    padding-bottom: 3px * Theme.scale + 1px;
+                    spacing: 3px * Theme.scale;
+                    Small {
+                        text: Bridge.settings.show-remaining ? "Remaining" : "Used";
+                        color: toggle-touch.has-hover ? Theme.paper : Theme.muted;
+                        overflow: clip;
+                        accessible-role: none;
+                    }
+                    // The swap glyph overhangs its 7.5×6.67 box by half a pixel (Figma).
+                    Rectangle {
+                        width: 7.5px * Theme.scale;
+                        Image {
+                            width: 8.5px * Theme.scale;
+                            height: 7.67px * Theme.scale;
+                            source: @image-url("icons/swap.svg");
+                            colorize: toggle-touch.has-hover ? Theme.paper : Theme.muted;
+                            accessible-role: none;
+                        }
+                    }
+                }
+                toggle-key := KeyFocus {
+                    name: "toggle";
+                    radius: 5px * Theme.scale;
+                    init => {
+                        if KeyboardFocus.owner == self.name && root.visible {
+                            self.focus();
+                        }
+                    }
+                    activated => {
+                        root.flip-percentage();
+                    }
+                }
+                toggle-touch := TouchArea {
+                    clicked => {
+                        root.flip-percentage();
+                    }
+                }
+                Tooltip {
+                    TipBox {
+                        text: Bridge.settings.show-remaining ? "Show used" : "Show remaining";
+                    }
+                }
+            }
+        }
+        Rectangle {
+            Small {
+                width: parent.width;
+                text: root.provider.age;
+            }
+            if root.provider.source != "" : Tooltip {
+                TipBox {
+                    text: root.provider.source;
+                }
+            }
+        }
+    }
+
+    if root.provider.meters.length > 0 : VerticalLayout {
+        padding-top: 14px * Theme.scale;
+        spacing: 12px * Theme.scale;
+        for meter in root.provider.meters : DetailEntry {
+            meter: meter;
+        }
+    }
+
+    // Collapsed, not behind an `if`, so its wrapped lines count towards the scroll height. A
+    // plain Text, not Small: Small's 14px line would keep a long error to one line.
+    Rectangle {
+        height: root.provider.error != "" ? self.preferred-height : 0;
+        visible: root.provider.error != "";
+        VerticalLayout {
+            padding-top: 14px * Theme.scale;
+            Text {
+                text: root.provider.error;
+                color: Theme.danger;
+                font-size: 11px * Theme.scale;
+                wrap: word-wrap;
+            }
+        }
+    }
+    }
+
+    // Another provider's pane now shows: its toggle takes over from the hidden one's.
+    changed visible => {
+        if self.visible && KeyboardFocus.owner == "toggle" {
+            toggle-key.focus();
+        }
+    }
+
+    function flip-percentage() {
+        root.edited = Bridge.settings;
+        root.edited.show-remaining = !root.edited.show-remaining;
+        Bridge.update-settings(root.edited);
+    }
+}
+
+// As tall as the window, which follows the rows; scrolls when its windows need more.
+export component DetailPane inherits Rectangle {
+    background: Theme.ink;
+    property <string> shown: Bridge.pinned != "" ? Bridge.pinned : Bridge.hovered;
+
+    Flickable {
+        content-height: content.preferred-height;
+        content := VerticalLayout {
+            alignment: start;
+            // All but the shown one collapsed: behind an `if`, Slint measures at the wrong width.
+            for provider in Bridge.providers : Detail {
+                provider: provider;
+                visible: provider.id == root.shown;
+                height: self.visible ? self.preferred-height : 0;
+            }
+        }
+    }
+
+    // The master column's right edge.
+    Rectangle {
+        x: 0;
+        width: 1px;
+        background: Theme.line;
+    }
+}

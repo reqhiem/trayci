@@ -78,7 +78,9 @@ Credentials are only read, never copied or written. Settings and a credential-fr
 
 ## Platform notes
 
-**Wayland.** The popover can be dragged, but only an X11 session remembers where it was left: GTK lets no Wayland client place its own window, so it reopens wherever the compositor puts it. Running `GDK_BACKEND=x11 trayci` is **not** a workaround — under XWayland the popover never takes input focus and the first click dismisses it instead of reaching the button.
+**Linux tray.** A left click on the icon opens the popover; the menu has Show Trayci and Quit. The icon is a StatusNotifierItem, so the desktop needs a host for it: KDE Plasma has one built in, GNOME needs the AppIndicator extension, and Cinnamon and Xfce show it through `xapp-sn-watcher`.
+
+**Wayland.** The popover can be dragged, but only an X11 session remembers where it was left: Wayland lets no client place its own window, so it reopens wherever the compositor puts it.
 
 **Windows.** `trayci.exe` is a GUI app, so an unpiped run does not make the shell wait: the output lands after the prompt and no exit code is recorded. Pipe it or wait on it to get both: `trayci.exe usage --json | ConvertFrom-Json` in PowerShell, `start /wait trayci.exe usage` in `cmd`. For the same reason the terminal view is Linux-only for now: on Windows, `trayci` with no arguments starts the tray app. Provider CLIs are found as real executables on `PATH` and in `~\.local\bin`, `~\.npm-global\bin`, and `~\.bun\bin` (`claude.exe`, `agy.exe`). For the `codex.cmd` and `claude.cmd` (Claude Code 2.1.113 or later) shims that `npm install -g` creates, Trayci runs the native `.exe` the shim starts; other `.cmd` shims are not detected.
 
@@ -100,30 +102,27 @@ trayci --help
 
 ## Development
 
-Trayci runs on Tauri 2: a Rust core in `src-tauri/` and a React renderer in the system WebView (`src/`). You need Linux amd64 or Windows x64, Node.js 22+, pnpm 9+, Rust 1.80+, the Tauri system dependencies (`libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev` on Debian/Ubuntu), and at least one signed-in provider CLI.
+Trayci is a Rust workspace: the shared core (providers, settings, the CLI and the terminal view) in `core/`, and the tray app in `src/` with its [Slint](https://slint.dev) UI in `ui/`. You need Linux amd64 or Windows x64, Rust 1.92+, and at least one signed-in provider CLI. On Debian/Ubuntu, building also needs `build-essential pkg-config libfontconfig1-dev libxkbcommon-dev`.
 
 ```bash
-pnpm install
-pnpm dev
+cargo run -- tray
 ```
 
-| Task                       | Command                                                                |
-| -------------------------- | ---------------------------------------------------------------------- |
-| Format, lint, typecheck    | `pnpm format:check`, `pnpm lint`, `pnpm typecheck` (or `make check`)   |
-| Tests                      | `pnpm test`, `cargo test --workspace` in `src-tauri/` (or `make test`) |
-| Installers                 | `pnpm dist:linux`, `pnpm dist:win`                                     |
-| Terminal view, from source | `pnpm cli`                                                             |
-| Diagnostics from source    | `pnpm cli -- usage --json`, `pnpm cli -- doctor`                       |
+| Task                       | Command                                                                                         |
+| -------------------------- | ----------------------------------------------------------------------------------------------- |
+| Format and lint            | `make check`                                                                                    |
+| Tests                      | `make test`                                                                                     |
+| Installers                 | `make bundle-linux`, `make bundle-win` (needs `cargo install cargo-packager --locked` and `jq`) |
+| Terminal view, from source | `cargo run`                                                                                     |
+| Diagnostics from source    | `cargo run -- usage --json`, `cargo run -- doctor`                                              |
 
-On Windows, `pnpm cli` rebuilds `trayci.exe`, which Windows will not let it replace while `pnpm dev` is running; stop the dev app first, or run a subcommand on the built binary directly, such as `src-tauri\target\debug\trayci.exe doctor` (with no subcommand it starts the tray, which hands over to the running dev app).
-
-Lefthook formats staged files with Prettier before each commit. Run `pnpm exec lefthook install` if the hook is missing.
+On Windows, `cargo run` rebuilds `trayci.exe`, which Windows will not let it replace while a tray app started by `cargo run -- tray` is running; quit it first, or run a subcommand on the built binary directly, such as `target\debug\trayci.exe doctor` (with no subcommand it starts the tray, which hands over to the running one).
 
 The website lives in `site/` (Astro) and deploys to GitHub Pages from `main`. Preview it with `pnpm install && pnpm dev` inside `site/`.
 
 ## Releases
 
-Pull requests and pushes to `main` run CI and upload Linux and Windows builds as artifacts. To publish a release, update the version in `package.json` and push the matching tag, for example `v0.5.0`; GitHub Actions builds the installers and attaches them to the release.
+Pull requests and pushes to `main` run CI and upload Linux and Windows builds as artifacts. To publish a release, update `version` under `[workspace.package]` in `Cargo.toml` and push the matching tag, for example `v0.5.0`; GitHub Actions builds the installers and attaches them to the release.
 
 ## Contributing
 
@@ -131,4 +130,6 @@ Issues and pull requests are welcome. Check the [roadmap](https://github.com/req
 
 ## License
 
-Trayci is available under the [MIT License](LICENSE). It is not affiliated with Anthropic, OpenAI, or Google.
+Trayci is available under the [MIT License](LICENSE). It is not affiliated with Anthropic, OpenAI, or Google. Its UI is built with [Slint](https://slint.dev) under the Slint Royalty-free License.
+
+<a href="https://slint.dev"><picture><source media="(prefers-color-scheme: dark)" srcset="https://slint.dev/logo/MadeWithSlint-logo-light.svg"><img alt="Made with Slint" src="https://slint.dev/logo/MadeWithSlint-logo-dark.svg" height="48"></picture></a>

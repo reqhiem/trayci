@@ -220,6 +220,10 @@ pre code {
   color: var(--accent);
 }
 
+.made-with {
+  display: inline-flex;
+}
+
 .footer p {
   flex-basis: 100%;
   color: var(--muted);

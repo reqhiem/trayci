@@ -16,45 +16,46 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
-      - name: Install Tauri system dependencies
+      - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y build-essential pkg-config libfontconfig1-dev libxkbcommon-dev
       - uses: dtolnay/rust-toolchain@stable
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
       - name: Verify tag matches package version
-        run: test "${GITHUB_REF_NAME#v}" = "$(node -p "require('./package.json').version")"
-      - run: pnpm dist:linux
+        run: test "${GITHUB_REF_NAME#v}" = "$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "trayci") | .version')"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-packager@0.11.8
+      - run: make bundle-linux
       - uses: actions/upload-artifact@v7
         with:
           name: release-linux
-          path: |
-            src-tauri/target/release/bundle/deb/*.deb
-            src-tauri/target/release/bundle/appimage/*.AppImage
+          path: dist/*
 
   build-win:
     runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
       - name: Verify tag matches package version
-        run: node -e "if (process.env.GITHUB_REF_NAME.slice(1) !== require('./package.json').version) process.exit(1)"
-      - run: pnpm dist:win
+        run: test "${GITHUB_REF_NAME#v}" = "$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "trayci") | .version')"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-packager@0.11.8
+      # The Makefile's bundle-win, without counting on make being on the Windows runner.
+      - name: Bundle
+        run: |
+          cargo packager --release --formats nsis
+          version="${GITHUB_REF_NAME#v}"
+          mkdir -p dist
+          mv "target/release/trayci_${version}_x64-setup.exe" "dist/Trayci_${version}_x64-setup.exe"
       - uses: actions/upload-artifact@v7
         with:
           name: release-win
-          path: src-tauri/target/release/bundle/nsis/*.exe
+          path: dist/*
 
   release:
     needs: [build-linux, build-win]

@@ -1,0 +1,61 @@
+// Figma RowButton (10:174) and QuitButton (10:179).
+import { Theme } from "../theme.slint";
+
+export component RowButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    in property <length> font-size: 10px * Theme.scale;
+    callback clicked();
+
+    border-width: 1px;
+    border-radius: 5px * Theme.scale;
+    border-color: touch.has-hover ? Theme.accent-line : Theme.line;
+    opacity: root.enabled ? 1 : 0.55;
+
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { root.clicked(); }
+
+    // The 1px border is inside the padding box, as in Figma.
+    HorizontalLayout {
+        padding-left: 8px * Theme.scale + 1px;
+        padding-right: self.padding-left;
+        padding-top: 4px * Theme.scale + 1px;
+        padding-bottom: self.padding-top;
+        Text {
+            text: root.text;
+            font-size: root.font-size;
+            color: touch.has-hover ? Theme.paper : Theme.muted;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+    focus := FocusScope {
+        enabled: root.enabled;
+        focus-on-click: false;
+        key-pressed(event) => {
+            if event.text == Key.Space || event.text == Key.Return {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    if focus.has-focus: Rectangle {
+        border-width: 2px;
+        border-radius: root.border-radius;
+        border-color: Theme.accent;
+    }
+}
+
+export component QuitButton inherits RowButton {
+    height: 34px * Theme.scale;
+    border-radius: 7px * Theme.scale;
+    font-size: 11px * Theme.scale;
+}
