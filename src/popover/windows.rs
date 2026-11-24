@@ -5,7 +5,10 @@ use slint::winit_030::winit::dpi::{PhysicalPosition, PhysicalSize};
 use windows_sys::Win32::{
     Foundation::POINT,
     Graphics::Gdi::{GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST},
-    UI::WindowsAndMessaging::GetCursorPos,
+    UI::{
+        Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON, VK_RBUTTON},
+        WindowsAndMessaging::{GetCursorPos, GetSystemMetrics, SM_SWAPBUTTON},
+    },
 };
 
 /// The work area of the monitor holding `point`: the monitor minus its taskbar (issue #42).
@@ -37,4 +40,19 @@ pub fn cursor_position() -> Option<PhysicalPosition<f64>> {
     // SAFETY: plain Win32 call writing into a local.
     let found = unsafe { GetCursorPos(&mut point) };
     (found != 0).then(|| PhysicalPosition::new(point.x.into(), point.y.into()))
+}
+
+/// Whether the primary button is down. GetAsyncKeyState reads the physical buttons, so with the
+/// buttons swapped the primary one is the right.
+pub fn button_held() -> Option<bool> {
+    // SAFETY: plain Win32 calls.
+    let primary = if unsafe { GetSystemMetrics(SM_SWAPBUTTON) } != 0 {
+        VK_RBUTTON
+    } else {
+        VK_LBUTTON
+    };
+    // SAFETY: as above.
+    let state = unsafe { GetAsyncKeyState(i32::from(primary)) };
+    // The top bit, the sign, is whether the button is down now.
+    Some(state < 0)
 }
