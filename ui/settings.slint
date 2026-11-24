@@ -204,6 +204,9 @@ component PositionRow inherits SettingRow {
 export component SettingsPage inherits Rectangle {
     // The old popover's tallest window, less the 34px topbar (Figma) stacked above this view.
     preferred-height: min(body.preferred-height, 1000px - 34px * Theme.scale);
+    // Placed below the topbar, the default (the window's height) would push the end of a capped,
+    // scrolling body out of the window.
+    height: self.preferred-height;
 
     // A copy to edit: Bridge.settings is Rust's, and update-settings takes the whole struct.
     property <SettingsView> draft;
@@ -214,6 +217,8 @@ export component SettingsPage inherits Rectangle {
         content-height: body.preferred-height;
         body := VerticalLayout {
             padding: 8px * Theme.scale;
+            // Figma's body is 359px: the popover's 1px outline takes the last column.
+            padding-right: 8px * Theme.scale + 1px;
             spacing: 9px * Theme.scale;
             alignment: start;
 
