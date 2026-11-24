@@ -2,10 +2,24 @@
 // background is the drag handle.
 import { Bridge, SettingsView } from "bridge.slint";
 import { Theme } from "theme.slint";
-import { IconButton, TipBox } from "components/icon-button.slint";
+import { IconButton, KeyFocus, TipBox } from "components/icon-button.slint";
 
 export component Topbar inherits Rectangle {
     property <SettingsView> edited;
+    // The switch came from the keyboard: the other view's back or gear button takes the focus.
+    property <bool> refocus;
+    // Hands the keyboard focus back to the popover itself.
+    callback focus-root;
+
+    // A view switch rebuilds this bar and hides the other view, which takes the focused element
+    // with it, and a focus left on nothing would leave Escape with nowhere to go.
+    function switch-view(open: bool, from-keyboard: bool) {
+        root.refocus = from-keyboard;
+        Bridge.settings-open = open;
+        if !from-keyboard {
+            root.focus-root();
+        }
+    }
 
     // Figma draws the usage header 32px tall and the settings one 34px, hairline included.
     height: (Bridge.settings-open ? 33px : 31px) * Theme.scale + 1px;
@@ -62,8 +76,14 @@ export component Topbar inherits Rectangle {
             icon: @image-url("icons/gear.svg");
             label: "Settings";
             tip: "Settings";
+            init => {
+                if root.refocus {
+                    self.focus();
+                    root.refocus = false;
+                }
+            }
             clicked => {
-                Bridge.settings-open = true;
+                root.switch-view(true, self.has-focus);
             }
         }
     }
@@ -80,10 +100,10 @@ export component Topbar inherits Rectangle {
             accessible-role: button;
             accessible-label: "Back to usage";
             accessible-action-default => {
-                Bridge.settings-open = false;
+                root.switch-view(false, false);
             }
             clicked => {
-                Bridge.settings-open = false;
+                root.switch-view(false, false);
             }
             Image {
                 width: 6.24px * Theme.scale;
@@ -93,6 +113,18 @@ export component Topbar inherits Rectangle {
                 source: @image-url("icons/back.svg");
                 colorize: Theme.paper;
                 accessible-role: none;
+            }
+            KeyFocus {
+                radius: 5px * Theme.scale;
+                init => {
+                    if root.refocus {
+                        self.focus();
+                        root.refocus = false;
+                    }
+                }
+                activated => {
+                    root.switch-view(false, true);
+                }
             }
         }
         Text {
@@ -109,10 +141,10 @@ export component Topbar inherits Rectangle {
             accessible-role: button;
             accessible-label: "Back to usage";
             accessible-action-default => {
-                Bridge.settings-open = false;
+                root.switch-view(false, false);
             }
             clicked => {
-                Bridge.settings-open = false;
+                root.switch-view(false, false);
             }
             Text {
                 text: "×";
@@ -120,6 +152,12 @@ export component Topbar inherits Rectangle {
                 font-size: 13px * Theme.scale;
                 letter-spacing: 1px * Theme.scale;
                 accessible-role: none;
+            }
+            KeyFocus {
+                radius: 5px * Theme.scale;
+                activated => {
+                    root.switch-view(false, true);
+                }
             }
             Tooltip {
                 TipBox {

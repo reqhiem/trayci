@@ -5,7 +5,21 @@ import { Bridge, MeterLine, MeterView, ProviderView, Severity, SettingsView } fr
 import { Theme } from "theme.slint";
 import { Meter } from "components/meter.slint";
 import { ProviderIcon } from "components/provider-icon.slint";
-import { TipBox } from "components/icon-button.slint";
+import { KeyFocus, TipBox } from "components/icon-button.slint";
+
+// What holds the keyboard focus among elements Rust rebuilds: it replaces the providers model on
+// every update and every minute, and the rows and detail panes with it. The new element takes
+// the focus back, or the focus would be left on nothing and Escape would stop working.
+global Rebuilt {
+    in-out property <string> focused-row;    // provider id
+    in-out property <bool> focused-toggle;   // the shown detail pane's Used/Remaining toggle
+
+    // Whether a lost focus moved within the popover. When the window itself loses it, the element
+    // gets it back on its return, so a rebuild in between must still restore it.
+    public pure function moved-away(reason: FocusReason) -> bool {
+        reason != FocusReason.window-activation && reason != FocusReason.popup-activation
+    }
+}
 
 // 11px on Figma's 14px line, which is shorter than the font's own. Preferred, not fixed: a
 // fixed-height item sits at the top of a taller cell instead of in its middle.
@@ -190,6 +204,30 @@ component ProviderRow inherits Rectangle {
         height: 1px;
         background: Theme.line;
     }
+
+    // Tabbing to a row reveals its detail pane, as hovering does. Getting the focus back, when the
+    // popover reopens or the row is rebuilt, does not: the popover reopens without a pane.
+    KeyFocus {
+        init => {
+            if Rebuilt.focused-row == root.provider.id {
+                self.focus();
+            }
+        }
+        focus-gained(reason) => {
+            Rebuilt.focused-row = root.provider.id;
+            if reason == FocusReason.tab-navigation {
+                Bridge.hovered = root.provider.id;
+            }
+        }
+        focus-lost(reason) => {
+            if Rebuilt.moved-away(reason) {
+                Rebuilt.focused-row = "";
+            }
+        }
+        activated => {
+            root.toggle-pin();
+        }
+    }
 }
 
 export component UsageView inherits Rectangle {
@@ -340,6 +378,25 @@ component Detail inherits Rectangle {
                             colorize: toggle-touch.has-hover ? Theme.paper : Theme.muted;
                             accessible-role: none;
                         }
+                    }
+                }
+                KeyFocus {
+                    radius: 5px * Theme.scale;
+                    init => {
+                        if Rebuilt.focused-toggle && root.visible {
+                            self.focus();
+                        }
+                    }
+                    focus-gained => {
+                        Rebuilt.focused-toggle = true;
+                    }
+                    focus-lost(reason) => {
+                        if Rebuilt.moved-away(reason) {
+                            Rebuilt.focused-toggle = false;
+                        }
+                    }
+                    activated => {
+                        root.flip-percentage();
                     }
                 }
                 toggle-touch := TouchArea {

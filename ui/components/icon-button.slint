@@ -26,6 +26,30 @@ export component TipBox inherits Rectangle {
     }
 }
 
+// Keyboard access for a clickable element, laid over it: Tab focuses it, Space or Enter activates
+// it, and an inset accent ring shows while it has focus. A click doesn't focus it, so the ring is
+// the keyboard's alone, like :focus-visible. Other keys are rejected and reach the popover's own
+// handler, so Escape still unpins, then hides.
+export component KeyFocus inherits FocusScope {
+    in property <length> radius;
+    callback activated;
+
+    focus-on-click: false;
+    key-pressed(event) => {
+        if event.text == Key.Space || event.text == Key.Return {
+            root.activated();
+            return accept;
+        }
+        reject
+    }
+
+    if root.has-focus : Rectangle {
+        border-width: 2px;
+        border-color: Theme.accent;
+        border-radius: root.radius;
+    }
+}
+
 // A header button: a 20×24 icon drawn muted, paper while hovered or pressed.
 export component IconButton inherits Rectangle {
     in property <image> icon;
@@ -34,8 +58,10 @@ export component IconButton inherits Rectangle {
     in property <bool> pressed;
     in property <bool> enabled: true;
     in property <bool> spinning;
+    out property <bool> has-focus: key.has-focus;
     callback clicked;
 
+    forward-focus: key;
     width: 20px * Theme.scale;
     height: 24px * Theme.scale;
     border-radius: 5px * Theme.scale;
@@ -60,6 +86,17 @@ export component IconButton inherits Rectangle {
         transform-origin: { x: self.width * 0.515, y: self.height * 0.536 };
         transform-rotation: root.spinning ? animation-tick() / 0.8s * 360deg : 0deg;
         accessible-role: none;
+    }
+
+    // Stays focusable while disabled: refresh disables itself when activated, and losing focus
+    // there would leave no element to take Escape.
+    key := KeyFocus {
+        radius: root.border-radius;
+        activated => {
+            if root.enabled {
+                root.clicked();
+            }
+        }
     }
 
     touch := TouchArea {

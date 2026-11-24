@@ -26,6 +26,8 @@ export component Popover inherits Window {
     forward-focus: scope;
 
     scope := FocusScope {
+        // Holds the focus between the controls, for Escape, without being a Tab stop of its own.
+        focus-on-tab-navigation: false;
         key-pressed(event) => {
             if event.text != Key.Escape {
                 return reject;
@@ -52,6 +54,9 @@ export component Popover inherits Window {
                 x: 0;
                 y: 0;
                 width: 360px * Theme.scale;
+                focus-root => {
+                    scope.focus();
+                }
             }
             usage := UsageView {
                 x: 0;
