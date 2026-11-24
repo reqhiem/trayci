@@ -36,7 +36,7 @@ impl ksni::Tray for Tray {
     fn activate(&mut self, x: i32, y: i32) {
         let popover = self.popover.clone();
         let anchor = PhysicalPosition::new(x.into(), y.into());
-        let _ = slint::invoke_from_event_loop(move || popover.toggle(anchor));
+        let _ = slint::invoke_from_event_loop(move || popover.toggle(Some(anchor)));
     }
 
     fn menu(&self) -> Vec<MenuItem<Self>> {
