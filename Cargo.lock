@@ -5257,7 +5257,7 @@ dependencies = [
 
 [[package]]
 name = "trayci"
-version = "0.5.3"
+version = "0.6.0"
 dependencies = [
  "embed-resource",
  "global-hotkey",
@@ -5276,7 +5276,7 @@ dependencies = [
 
 [[package]]
 name = "trayci-core"
-version = "0.5.3"
+version = "0.6.0"
 dependencies = [
  "async-trait",
  "chrono",
