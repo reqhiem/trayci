@@ -202,8 +202,9 @@ component PositionRow inherits SettingRow {
 }
 
 export component SettingsPage inherits Rectangle {
-    // The old popover's tallest window, less the 34px topbar (Figma) stacked above this view.
-    preferred-height: min(body.preferred-height, 1000px - 34px * Theme.scale);
+    // The old popover's tallest window, less the topbar stacked above this view (33px and its
+    // hairline, as topbar.slint draws it for settings).
+    preferred-height: min(body.preferred-height, 1000px - 33px * Theme.scale - 1px);
     // Placed below the topbar, the default (the window's height) would push the end of a capped,
     // scrolling body out of the window.
     height: self.preferred-height;
@@ -350,6 +351,7 @@ export component SettingsPage inherits Rectangle {
                         init => {
                             if root.refocus == provider.id + ":switch" {
                                 enable.focus();
+                                root.refocus = "";
                             } else if root.refocus == provider.id + ":up" || root.refocus == provider.id + ":down" {
                                 // At either end its own arrow is disabled: take the other one.
                                 if (root.refocus == provider.id + ":up" ? up.enabled : !down.enabled) {
@@ -357,6 +359,7 @@ export component SettingsPage inherits Rectangle {
                                 } else {
                                     down.focus();
                                 }
+                                root.refocus = "";
                             }
                         }
                         ChoiceFrame {
