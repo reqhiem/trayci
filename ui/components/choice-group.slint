@@ -10,6 +10,8 @@ export component ChoiceButton inherits Rectangle {
     in property <bool> divider;
     in property <bool> enabled: true;
     callback clicked();
+    out property <bool> has-focus: focus.has-focus;
+    forward-focus: focus;
 
     height: 21px * Theme.scale;
     background: root.pressed ? Theme.tint : transparent;

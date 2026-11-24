@@ -204,6 +204,8 @@ export component SettingsPage inherits Rectangle {
 
     // A copy to edit: Bridge.settings is Rust's, and update-settings takes the whole struct.
     property <SettingsView> draft;
+    // "<provider id>:up|down|switch" while a provider row the keyboard was on is being saved.
+    property <string> refocus;
 
     flick := Flickable {
         content-height: body.preferred-height;
@@ -335,30 +337,51 @@ export component SettingsPage inherits Rectangle {
                 title: "Providers";
                 if providers.open: VerticalLayout {
                     for provider[index] in Bridge.settings.providers: SettingRow {
+                        // Each save replaces the model and so these rows: the keyboard focus
+                        // comes back to the control it was on, now in this provider's new row.
+                        init => {
+                            if root.refocus == provider.id + ":switch" {
+                                enable.focus();
+                            } else if root.refocus == provider.id + ":up" || root.refocus == provider.id + ":down" {
+                                // At either end its own arrow is disabled: take the other one.
+                                if (root.refocus == provider.id + ":up" ? up.enabled : !down.enabled) {
+                                    up.focus();
+                                } else {
+                                    down.focus();
+                                }
+                            }
+                        }
                         ChoiceFrame {
                             accessible-role: groupbox;
                             accessible-label: "Reorder \{provider.label}";
-                            ChoiceButton {
+                            up := ChoiceButton {
                                 text: "↑";
                                 label: "Move \{provider.label} up";
                                 checkable: false;
                                 enabled: index > 0;
-                                clicked => { root.move-provider(index, -1); }
+                                clicked => {
+                                    root.refocus = self.has-focus ? provider.id + ":up" : "";
+                                    root.move-provider(index, -1);
+                                }
                             }
-                            ChoiceButton {
+                            down := ChoiceButton {
                                 text: "↓";
                                 label: "Move \{provider.label} down";
                                 checkable: false;
                                 divider: true;
                                 enabled: index < Bridge.settings.providers.length - 1;
-                                clicked => { root.move-provider(index, 1); }
+                                clicked => {
+                                    root.refocus = self.has-focus ? provider.id + ":down" : "";
+                                    root.move-provider(index, 1);
+                                }
                             }
                         }
                         RowLabel { text: provider.label; }
-                        Switch {
+                        enable := Switch {
                             label: provider.label;
                             checked: provider.enabled;
                             toggled => {
+                                root.refocus = self.has-focus ? provider.id + ":switch" : "";
                                 root.draft = Bridge.settings;
                                 root.draft.providers = root.providers-toggled(index);
                                 Bridge.update-settings(root.draft);

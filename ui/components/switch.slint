@@ -5,6 +5,8 @@ export component Switch inherits Rectangle {
     in property <bool> checked;
     in property <string> label;
     callback toggled();
+    out property <bool> has-focus: focus.has-focus;
+    forward-focus: focus;
 
     width: 31px * Theme.scale;
     height: 18px * Theme.scale;
