@@ -128,7 +128,9 @@ mod windows {
         sync::{Arc, Mutex},
     };
     use windows_sys::Win32::{
-        Foundation::{ERROR_ACCESS_DENIED, ERROR_PIPE_CONNECTED, INVALID_HANDLE_VALUE},
+        Foundation::{
+            ERROR_ACCESS_DENIED, ERROR_NO_DATA, ERROR_PIPE_CONNECTED, INVALID_HANDLE_VALUE,
+        },
         Storage::FileSystem::{FILE_FLAG_FIRST_PIPE_INSTANCE, PIPE_ACCESS_INBOUND},
         System::Pipes::{
             ConnectNamedPipe, CreateNamedPipeW, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE,
@@ -175,9 +177,12 @@ mod windows {
                 // SAFETY: a pipe handle this thread owns; with no OVERLAPPED the call blocks until
                 // a client connects.
                 let connected =
-                    unsafe { ConnectNamedPipe(pipe.as_raw_handle(), std::ptr::null_mut()) != 0 }
-                        || io::Error::last_os_error().raw_os_error()
-                            == Some(ERROR_PIPE_CONNECTED as i32);
+                    unsafe { ConnectNamedPipe(pipe.as_raw_handle(), std::ptr::null_mut()) } != 0;
+                // A launch that connected before the call, or that already wrote and closed:
+                // what it wrote is still in the pipe.
+                let early = [ERROR_PIPE_CONNECTED, ERROR_NO_DATA]
+                    .map(|code| Some(code as i32))
+                    .contains(&io::Error::last_os_error().raw_os_error());
                 let client = match listen(false) {
                     Ok(next) => std::mem::replace(&mut pipe, next),
                     Err(error) => {
@@ -185,7 +190,7 @@ mod windows {
                         return;
                     }
                 };
-                if !connected {
+                if !connected && !early {
                     continue;
                 }
                 // Every user may open the pipe for reading; one that never writes must not
