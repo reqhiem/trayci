@@ -278,9 +278,21 @@ fn notify(runtime: &Handle, request: NotificationRequest) {
     });
 }
 
-/// W4 sends these as Windows toasts.
+/// A toast. It shows as Trayci only from an install: Windows names a toast after the Start menu
+/// shortcut whose AppUserModelID matches, and the installer stamps the identifier on it.
 #[cfg(windows)]
-fn notify(_runtime: &Handle, _request: NotificationRequest) {}
+fn notify(runtime: &Handle, request: NotificationRequest) {
+    runtime.spawn_blocking(move || {
+        let shown = notify_rust::Notification::new()
+            .app_id("com.trayci.Trayci")
+            .summary(&request.title)
+            .body(&request.body)
+            .show();
+        if let Err(error) = shown {
+            eprintln!("trayci: notification failed: {error}");
+        }
+    });
+}
 
 fn position_patch(position: Option<(i32, i32)>) -> TrayciSettingsPatch {
     TrayciSettingsPatch {

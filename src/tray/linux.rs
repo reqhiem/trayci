@@ -122,7 +122,9 @@ fn icon(png: &[u8]) -> Result<Icon, png::DecodingError> {
         )));
     }
     data.truncate(frame.buffer_size());
-    data.chunks_exact_mut(4)
+    data.as_chunks_mut::<4>()
+        .0
+        .iter_mut()
         .for_each(|pixel| pixel.rotate_right(1));
     Ok(Icon {
         width: i32::try_from(frame.width).unwrap_or(0),

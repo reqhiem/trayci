@@ -16,6 +16,9 @@ rust-version.workspace = true
 license.workspace = true
 
 [build-dependencies]
+# Embeds the exe icon on Windows, which the Start menu shortcut, toasts and the tray use; a no-op
+# for other targets.
+embed-resource = "3"
 slint-build = "~1.18"
 
 [dependencies]
@@ -46,8 +49,74 @@ png = "0.18"
 # none of which winit exposes.
 x11rb = "0.13"
 
-# `AttachConsole` for CLI output from the GUI-subsystem exe, and the HKCU Run value for start at
-# login (issue #52).
+# `AttachConsole` for CLI output from the GUI-subsystem exe, the work area and pointer for the
+# popover, the single-instance pipe, and the HKCU Run value for start at login (issue #52).
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
+notify-rust = "4"
+# 0.24 shares Slint's muda 0.19. Slint installs muda's set-once menu handler only for a MenuBar or
+# ContextMenuArea, which the popover has none of, so the tray menu keeps it.
+tray-icon = { version = "0.24", default-features = false }
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_IO",
+    "Win32_System_Pipes",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }
 winreg = "0.10"
+
+# `cargo packager --release --formats deb,appimage` (or `nsis`). It names bundles after the binary,
+# `trayci_*`; CI and the Makefile rename them to the `Trayci_*` that install.sh and install.ps1 fetch.
+[package.metadata.packager]
+productName = "Trayci"
+identifier = "com.trayci.Trayci"
+category = "Utility"
+description = "AI coding usage in your system tray"
+longDescription = "Shows how much of your Claude Code, Codex and Antigravity quota is left, from the system tray or the terminal."
+authors = ["Trayci contributors"]
+beforePackagingCommand = "cargo build --release"
+icons = [
+    "resources/icons/32x32.png",
+    "resources/icons/128x128.png",
+    "resources/icons/256x256.png",
+    "resources/icons/512x512.png",
+    "resources/icons/icon.ico",
+]
+
+[package.metadata.packager.deb]
+# install.sh asks `dpkg-query -W trayci`.
+packageName = "trayci"
+desktopTemplate = "resources/trayci.desktop"
+# Only fontconfig is linked; winit and femtovg dlopen the rest at startup.
+depends = [
+    "libfontconfig1",
+    "libxkbcommon0",
+    "libxkbcommon-x11-0",
+    "libx11-6",
+    "libx11-xcb1",
+    "libxcursor1",
+    "libxi6",
+    "libgl1",
+    "libegl1",
+    "libwayland-client0",
+    "libwayland-egl1",
+]
+
+[package.metadata.packager.appimage]
+files = { "resources/trayci-appimage.desktop" = "usr/share/applications/trayci.desktop" }
+
+[package.metadata.packager.nsis]
+# %LOCALAPPDATA%\Trayci\trayci.exe, which install.ps1 starts.
+installMode = "currentUser"
+# The template has no uninstall hook, but a section named `un.*` declared here joins the
+# uninstaller: it removes the Run value autostart.rs writes, as the Tauri installer did. No quotes:
+# cargo-packager's template escaping turns `"` into a literal quote.
+preinstallSection = """
+Section un.RemoveAutostart
+  DeleteRegValue HKCU Software\\Microsoft\\Windows\\CurrentVersion\\Run Trayci
+SectionEnd
+"""

@@ -417,7 +417,13 @@ pub fn window_attributes(attributes: WindowAttributes) -> WindowAttributes {
         use slint::winit_030::winit::platform::x11::{WindowAttributesExtX11, WindowType};
         attributes.with_x11_window_type(vec![WindowType::Utility])
     }
-    #[cfg(not(target_os = "linux"))]
+    // A tray flyout, not an app window: no taskbar button.
+    #[cfg(windows)]
+    {
+        use slint::winit_030::winit::platform::windows::WindowAttributesExtWindows;
+        attributes.with_skip_taskbar(true)
+    }
+    #[cfg(not(any(target_os = "linux", windows)))]
     attributes
 }
 
@@ -430,13 +436,10 @@ pub fn positions_are_real() -> bool {
     true
 }
 
-/// Whether the primary button is still down. Where the server cannot be asked, any pointer event
-/// after the press ends the drag.
+/// Whether the primary button is still down. Where the platform cannot be asked, any pointer
+/// event after the press ends the drag.
 fn button_held() -> bool {
-    #[cfg(target_os = "linux")]
-    return linux::button_held() == Some(true);
-    #[cfg(not(target_os = "linux"))]
-    false
+    platform::button_held() == Some(true)
 }
 
 /// On Windows, a tray press blurs (and so hides) the popover before the click reaches `toggle`.
