@@ -4,6 +4,7 @@
 
 mod autostart;
 mod gui;
+mod hotkey;
 mod popover;
 mod single_instance;
 mod tray;

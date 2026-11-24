@@ -31,6 +31,8 @@ pub fn ordered<'a>(
         provider_rank(order, &a.provider)
             .cmp(&provider_rank(order, &b.provider))
             .then(most(b).total_cmp(&most(a)))
+            // The snapshots come from a HashMap: without this, ties swap places between renders.
+            .then_with(|| a.provider.cmp(&b.provider))
     });
     sorted
 }
@@ -126,7 +128,7 @@ pub fn status_summary(snapshot: &ProviderUsageSnapshot, now: u64) -> Option<Summ
 /// keyed on its duration; any other length is its label without the pool's name in front.
 fn cadence(window: &UsageWindow, weekly: &str) -> String {
     let Some(group) = &window.group else {
-        return if window.label == "Weekly" {
+        return if window.label.eq_ignore_ascii_case("weekly") {
             weekly.into()
         } else {
             window.label.clone()
@@ -369,6 +371,12 @@ mod tests {
             sorted(&["claude", "antigravity", "codex"], &USAGE),
             ["claude", "antigravity", "codex"]
         );
+    }
+
+    #[test]
+    fn equal_usage_falls_back_to_the_provider_id() {
+        let usage = [("codex", 0.0), ("antigravity", 0.0), ("claude", 0.0)];
+        assert_eq!(sorted(&[], &usage), ["antigravity", "claude", "codex"]);
     }
 
     #[test]
