@@ -424,6 +424,8 @@ mod tests {
         // Made from the view that still shows the old theme.
         let mut second = settings(&shown, true);
         second.font_scale = 1.3;
+        // Against the saved settings, the old theme the view still showed looks like an edit.
+        assert_eq!(patch(&saved, &second).theme, Some(shown.theme));
         let edit = patch(&shown, &second);
         assert_eq!(edit.theme, None);
         trayci_core::settings::merge(&mut saved, edit).expect("valid patch");

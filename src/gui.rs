@@ -246,8 +246,12 @@ impl App {
                 (previous, settings)
             };
             app.show_error(String::new());
-            if let Err(error) = autostart::set_enabled(settings.start_on_login).await {
-                app.show_error(error.to_string());
+            // Every drag end saves a position through here; only a changed switch rewrites the
+            // autostart entry. `run` syncs it once at startup.
+            if previous.start_on_login != settings.start_on_login {
+                if let Err(error) = autostart::set_enabled(settings.start_on_login).await {
+                    app.show_error(error.to_string());
+                }
             }
             // Themes, text size and percentage style change nothing a provider would answer
             // differently, so they must not spend a request: toggling them used to refresh every
