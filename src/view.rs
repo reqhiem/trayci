@@ -1,6 +1,6 @@
 //! What the Slint views show, built from the service's state and the settings, and the way back
 //! from an edited settings view to a patch.
-use crate::ui::{MeterView, ProviderSetting, ProviderView, SettingsView, Severity};
+use crate::ui::{MeterLine, MeterView, ProviderSetting, ProviderView, SettingsView, Severity};
 use slint::{Model, ModelRc, SharedString, VecModel};
 use trayci_core::{
     presentation, BuiltInProviderSettingsPatch, DisplayMode, NotificationSettingsPatch,
@@ -28,6 +28,7 @@ pub fn providers(state: &UsageState, settings: &TrayciSettings, now: u64) -> Vec
 
 fn provider(snapshot: &ProviderUsageSnapshot, mode: PercentageDisplay, now: u64) -> ProviderView {
     let meter = |window| meter(window, mode, now);
+    let meters = snapshot.windows.iter().map(meter).collect::<Vec<_>>();
     let summary = presentation::status_summary(snapshot, now);
     let tightest = presentation::tightest(snapshot);
     let message = match (snapshot.windows.is_empty(), snapshot.status) {
@@ -38,7 +39,7 @@ fn provider(snapshot: &ProviderUsageSnapshot, mode: PercentageDisplay, now: u64)
     ProviderView {
         id: snapshot.provider.as_str().into(),
         name: snapshot.display_name.as_str().into(),
-        plan: snapshot.plan.as_deref().unwrap_or_default().into(),
+        plan: capitalized(snapshot.plan.as_deref().unwrap_or_default()).into(),
         loading: snapshot.status == UsageStatus::Fetching,
         failed: snapshot.windows.is_empty(),
         message: message.into(),
@@ -47,7 +48,8 @@ fn provider(snapshot: &ProviderUsageSnapshot, mode: PercentageDisplay, now: u64)
             .map(|summary| summary.text)
             .unwrap_or_default()
             .into(),
-        meters: model(snapshot.windows.iter().map(meter)),
+        lines: model(lines(&meters).into_iter()),
+        meters: model(meters.into_iter()),
         has_tightest: tightest.is_some(),
         tightest: tightest.map(meter).unwrap_or_default(),
         age: presentation::format_age(snapshot.updated_at, now).into(),
@@ -58,6 +60,39 @@ fn provider(snapshot: &ProviderUsageSnapshot, mode: PercentageDisplay, now: u64)
             .into(),
         error: snapshot.error.as_deref().unwrap_or_default().into(),
     }
+}
+
+/// Two meters a line, left then right, so the bars of a column line up. A wide meter takes a line
+/// of its own instead of being cut.
+fn lines(meters: &[MeterView]) -> Vec<MeterLine> {
+    let mut lines: Vec<MeterLine> = Vec::new();
+    for meter in meters {
+        match lines.last_mut() {
+            Some(line) if !line.has_right && !line.left.wide && !meter.wide => {
+                line.right = meter.clone();
+                line.has_right = true;
+            }
+            _ => lines.push(MeterLine {
+                left: meter.clone(),
+                ..Default::default()
+            }),
+        }
+    }
+    lines
+}
+
+/// "free" → "Free", as the webview's `text-transform: capitalize` showed a plan.
+fn capitalized(text: &str) -> String {
+    text.split(' ')
+        .map(|word| {
+            let mut chars = word.chars();
+            chars
+                .next()
+                .map(|first| first.to_uppercase().chain(chars).collect())
+                .unwrap_or_default()
+        })
+        .collect::<Vec<String>>()
+        .join(" ")
 }
 
 fn meter(window: &UsageWindow, mode: PercentageDisplay, now: u64) -> MeterView {
@@ -322,12 +357,15 @@ mod tests {
             name: "Gemini 4 Argon".into(),
             models: None,
         });
-        let usage = state(vec![snapshot("antigravity", vec![gemini, long])]);
+        let mut antigravity = snapshot("antigravity", vec![gemini, long]);
+        antigravity.plan = Some("pro plus".into());
+        let usage = state(vec![antigravity]);
         let settings = TrayciSettings {
             percentage_display: PercentageDisplay::Remaining,
             ..Default::default()
         };
         let view = &providers(&usage, &settings, NOW)[0];
+        assert_eq!(view.plan, "Pro Plus");
         assert_eq!(view.summary, "3h 54m");
         assert!(!view.summary_stale);
         assert_eq!(view.source, "via API");
@@ -343,6 +381,41 @@ mod tests {
         assert!(view.meters.row_data(1).is_some_and(|meter| meter.wide));
         assert!(view.has_tightest);
         assert_eq!(view.tightest.id, "gemini-weekly");
+    }
+
+    #[test]
+    fn meters_pair_up_unless_one_is_wide() {
+        let meter = |id: &str, wide| MeterView {
+            id: id.into(),
+            wide,
+            ..Default::default()
+        };
+        let meters = [
+            meter("a", false),
+            meter("b", false),
+            meter("wide", true),
+            meter("c", false),
+            meter("d", false),
+            meter("e", false),
+        ];
+        let shape = lines(&meters)
+            .iter()
+            .map(|line| {
+                (
+                    line.left.id.to_string(),
+                    line.has_right.then(|| line.right.id.to_string()),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            shape,
+            [
+                ("a".into(), Some("b".into())),
+                ("wide".into(), None),
+                ("c".into(), Some("d".into())),
+                ("e".into(), None),
+            ]
+        );
     }
 
     #[test]
