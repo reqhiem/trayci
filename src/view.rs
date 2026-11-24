@@ -13,7 +13,7 @@ use trayci_core::{
 const WIDE_LABEL: usize = 14;
 
 const BUILT_IN: [(&str, &str); 3] = [
-    ("claude", "Claude"),
+    ("claude", "Claude Code"),
     ("codex", "Codex"),
     ("antigravity", "Antigravity"),
 ];

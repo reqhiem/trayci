@@ -1,108 +1,418 @@
-// Placeholder for the settings view (W2): proves the contract, not the design. Named
-// SettingsPage because `SettingsView` is the struct it edits.
-import { CheckBox, Button } from "std-widgets.slint";
-import { Bridge, SettingsView } from "bridge.slint";
+// The settings view below the shared topbar (Figma 48:4316). Named SettingsPage because
+// `SettingsView` is the struct it edits.
+import { Bridge, ProviderSetting, SettingsView } from "bridge.slint";
 import { Theme } from "theme.slint";
+import { QuitButton, RowButton } from "components/button.slint";
+import { ChoiceButton, ChoiceFrame, ChoiceGroup } from "components/choice-group.slint";
+import { GroupHeader } from "components/group-header.slint";
+import { RowLabel, SettingRow } from "components/setting-row.slint";
+import { Switch } from "components/switch.slint";
 
-component Label inherits Text {
-    color: Theme.paper;
+component Group inherits Rectangle {
+    in property <string> title;
+    in-out property <bool> open;
+
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.line;
+    border-radius: 7px * Theme.scale;
+
+    VerticalLayout {
+        padding: 1px;
+        GroupHeader {
+            title: root.title;
+            open <=> root.open;
+        }
+        @children
+    }
+}
+
+component SwitchRow inherits SettingRow {
+    in property <string> label;
+    in property <bool> checked;
+    callback toggled();
+
+    RowLabel { text: root.label; }
+    Switch {
+        label: root.label;
+        checked: root.checked;
+        toggled => { root.toggled(); }
+    }
+}
+
+component ChoiceRow inherits SettingRow {
+    in property <string> label;
+    in property <[string]> options;
+    in property <int> selected;
+    callback chosen(int);
+    // The row's own height, 1 + 8 + 23 + 8 as in Figma: laid out before ChoiceGroup's buttons
+    // exist, the first group kept the 38px it had without them.
+    min-height: 37px * Theme.scale + 3px;
+
+    RowLabel { text: root.label; }
+    ChoiceGroup {
+        label: root.label;
+        options: root.options;
+        selected: root.selected;
+        chosen(index) => { root.chosen(index); }
+    }
+}
+
+component NumberField inherits Rectangle {
+    in property <string> label;
+    in property <bool> enabled <=> input.enabled;
+    in-out property <string> text <=> input.text;
+    out property <bool> has-focus: input.has-focus;
+    callback edited();
+    callback accepted();
+
+    width: 62px * Theme.scale;
+    height: 21px * Theme.scale;
+    border-width: 1px;
+    border-radius: 5px * Theme.scale;
+    border-color: input.has-focus ? Theme.accent-line : Theme.line;
+    opacity: root.enabled ? 1 : 0.55;
+
+    input := TextInput {
+        x: 5px * Theme.scale;
+        width: parent.width - 10px * Theme.scale;
+        single-line: true;
+        vertical-alignment: center;
+        font-size: 10px * Theme.scale;
+        color: Theme.muted;
+        selection-background-color: Theme.accent-line;
+        selection-foreground-color: Theme.paper;
+        accessible-label: root.label;
+        edited => { root.edited(); }
+        accepted => { root.accepted(); }
+    }
+}
+
+component AxisLabel inherits Text {
+    font-size: 10px * Theme.scale;
+    color: Theme.muted;
     vertical-alignment: center;
 }
 
+// The X and Y the popover is placed at, as an alternative to dragging it (issue #39).
+//
+// Both coordinates travel together: committing one alone would send the popover to a corner it
+// was never asked to go to. What is typed is kept until it has become a position, so a
+// half-typed number is not one.
+component PositionRow inherits SettingRow {
+    property <bool> real: Bridge.settings.positions-real;
+    property <bool> saved: Bridge.settings.has-position;
+    property <int> saved-x: Bridge.settings.position-x;
+    property <int> saved-y: Bridge.settings.position-y;
+    property <bool> drafting;
+
+    function show-saved() {
+        if !root.drafting {
+            x.text = root.saved ? root.saved-x : "";
+            y.text = root.saved ? root.saved-y : "";
+        }
+    }
+    pure function integer(text: string) -> bool {
+        text != "" && text.is-float() && text.to-float() == round(text.to-float())
+    }
+    // The draft is only dropped once it has become a position. Clearing it on every focus loss
+    // threw away whichever field was filled first, so with no position saved yet, tabbing from X
+    // to Y emptied X and neither could ever be set.
+    function commit() {
+        if root.integer(x.text) && root.integer(y.text) {
+            root.drafting = false;
+            Bridge.set-position(x.text.to-float(), y.text.to-float());
+        }
+    }
+
+    init => { root.show-saved(); }
+    changed saved => { root.show-saved(); }
+    changed saved-x => { root.show-saved(); }
+    changed saved-y => { root.show-saved(); }
+
+    RowLabel { text: root.real ? "Position" : "Position (Wayland ignores it)"; }
+    HorizontalLayout {
+        horizontal-stretch: 0;
+        spacing: 8px * Theme.scale;
+        HorizontalLayout {
+            spacing: 4px * Theme.scale;
+            AxisLabel { text: "X"; }
+            x := NumberField {
+                label: "Position X";
+                enabled: root.real;
+                edited => { root.drafting = true; }
+                accepted => { root.commit(); }
+                changed has-focus => {
+                    if !self.has-focus {
+                        root.commit();
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 4px * Theme.scale;
+            AxisLabel { text: "Y"; }
+            y := NumberField {
+                label: "Position Y";
+                enabled: root.real;
+                edited => { root.drafting = true; }
+                accepted => { root.commit(); }
+                changed has-focus => {
+                    if !self.has-focus {
+                        root.commit();
+                    }
+                }
+            }
+        }
+        if root.real: RowButton {
+            text: "Reset";
+            clicked => {
+                root.drafting = false;
+                x.text = "";
+                y.text = "";
+                Bridge.reset-position();
+            }
+        }
+    }
+    if !root.real: hover := TouchArea {
+        // Above the disabled fields, so the whole row explains itself.
+        if hover.has-hover: Rectangle {
+            x: parent.width - self.width - 10px * Theme.scale;
+            y: -self.height - 2px;
+            background: Theme.surface;
+            border-width: 1px;
+            border-color: Theme.line;
+            border-radius: 5px * Theme.scale;
+            HorizontalLayout {
+                padding-left: 8px * Theme.scale;
+                padding-right: self.padding-left;
+                padding-top: 4px * Theme.scale;
+                padding-bottom: self.padding-top;
+                Text {
+                    text: "Wayland ignores a typed position";
+                    font-size: 10px * Theme.scale;
+                    color: Theme.paper;
+                }
+            }
+        }
+    }
+}
+
 export component SettingsPage inherits Rectangle {
+    // The old popover's tallest window, less the 34px topbar (Figma) stacked above this view.
+    preferred-height: min(body.preferred-height, 1000px - 34px * Theme.scale);
+
     // A copy to edit: Bridge.settings is Rust's, and update-settings takes the whole struct.
     property <SettingsView> draft;
 
-    VerticalLayout {
-        width: 360px * Theme.scale;
-        alignment: start;
-        padding: 12px;
-        spacing: 6px;
-        HorizontalLayout {
-            height: 32px * Theme.scale;
-            TouchArea {
-                pointer-event(event) => {
-                    if event.kind == PointerEventKind.down {
-                        Bridge.begin-drag();
+    flick := Flickable {
+        content-height: body.preferred-height;
+        body := VerticalLayout {
+            padding: 8px * Theme.scale;
+            spacing: 9px * Theme.scale;
+            alignment: start;
+
+            general := Group {
+                title: "General";
+                open: true;
+                if general.open: VerticalLayout {
+                    SwitchRow {
+                        label: "Start Trayci on login";
+                        checked: Bridge.settings.start-on-login;
+                        toggled => {
+                            root.draft = Bridge.settings;
+                            root.draft.start-on-login = !Bridge.settings.start-on-login;
+                            Bridge.update-settings(root.draft);
+                        }
+                    }
+                    SwitchRow {
+                        label: "Refresh after resume";
+                        checked: Bridge.settings.refresh-on-resume;
+                        toggled => {
+                            root.draft = Bridge.settings;
+                            root.draft.refresh-on-resume = !Bridge.settings.refresh-on-resume;
+                            Bridge.update-settings(root.draft);
+                        }
+                    }
+                    ChoiceRow {
+                        label: "Refresh interval";
+                        options: ["5m", "15m", "30m", "60m"];
+                        selected: Bridge.settings.poll-minutes == 5 ? 0
+                            : Bridge.settings.poll-minutes == 15 ? 1
+                            : Bridge.settings.poll-minutes == 30 ? 2
+                            : Bridge.settings.poll-minutes == 60 ? 3 : -1;
+                        chosen(index) => {
+                            root.draft = Bridge.settings;
+                            root.draft.poll-minutes = [5, 15, 30, 60][index];
+                            Bridge.update-settings(root.draft);
+                        }
                     }
                 }
-                Label {
-                    x: 0;
-                    text: "Settings";
-                    font-weight: 600;
+            }
+
+            appearance := Group {
+                title: "Appearance";
+                open: true;
+                if appearance.open: VerticalLayout {
+                    ChoiceRow {
+                        label: "Theme";
+                        options: ["Auto", "Light", "Dark"];
+                        selected: Bridge.settings.theme == "light" ? 1 : Bridge.settings.theme == "dark" ? 2 : 0;
+                        chosen(index) => {
+                            root.draft = Bridge.settings;
+                            root.draft.theme = ["system", "light", "dark"][index];
+                            Bridge.update-settings(root.draft);
+                        }
+                    }
+                    ChoiceRow {
+                        label: "Text size";
+                        options: ["S", "M", "L", "XL"];
+                        selected: Bridge.settings.font-scale < 0.95 ? 0
+                            : Bridge.settings.font-scale < 1.07 ? 1
+                            : Bridge.settings.font-scale < 1.22 ? 2 : 3;
+                        chosen(index) => {
+                            root.draft = Bridge.settings;
+                            root.draft.font-scale = [0.9, 1, 1.15, 1.3][index];
+                            Bridge.update-settings(root.draft);
+                        }
+                    }
+                    ChoiceRow {
+                        label: "Percentage";
+                        options: ["Used", "Remaining"];
+                        selected: Bridge.settings.show-remaining ? 1 : 0;
+                        chosen(index) => {
+                            root.draft = Bridge.settings;
+                            root.draft.show-remaining = index == 1;
+                            Bridge.update-settings(root.draft);
+                        }
+                    }
                 }
             }
-            TouchArea {
-                width: 24px * Theme.scale;
-                clicked => { Bridge.settings-open = false; }
-                Label { text: "←"; }
+
+            notifications := Group {
+                title: "Notifications";
+                if notifications.open: VerticalLayout {
+                    SwitchRow {
+                        label: "Quota reaches 50%";
+                        checked: Bridge.settings.notify-50;
+                        toggled => {
+                            root.draft = Bridge.settings;
+                            root.draft.notify-50 = !Bridge.settings.notify-50;
+                            Bridge.update-settings(root.draft);
+                        }
+                    }
+                    SwitchRow {
+                        label: "Quota reaches 85%";
+                        checked: Bridge.settings.notify-85;
+                        toggled => {
+                            root.draft = Bridge.settings;
+                            root.draft.notify-85 = !Bridge.settings.notify-85;
+                            Bridge.update-settings(root.draft);
+                        }
+                    }
+                    SwitchRow {
+                        label: "Quota reaches 90%";
+                        checked: Bridge.settings.notify-90;
+                        toggled => {
+                            root.draft = Bridge.settings;
+                            root.draft.notify-90 = !Bridge.settings.notify-90;
+                            Bridge.update-settings(root.draft);
+                        }
+                    }
+                    SwitchRow {
+                        label: "Quota reset completes";
+                        checked: Bridge.settings.notify-reset;
+                        toggled => {
+                            root.draft = Bridge.settings;
+                            root.draft.notify-reset = !Bridge.settings.notify-reset;
+                            Bridge.update-settings(root.draft);
+                        }
+                    }
+                }
+            }
+
+            providers := Group {
+                title: "Providers";
+                if providers.open: VerticalLayout {
+                    for provider[index] in Bridge.settings.providers: SettingRow {
+                        ChoiceFrame {
+                            accessible-role: groupbox;
+                            accessible-label: "Reorder \{provider.label}";
+                            ChoiceButton {
+                                text: "↑";
+                                label: "Move \{provider.label} up";
+                                checkable: false;
+                                enabled: index > 0;
+                                clicked => { root.move-provider(index, -1); }
+                            }
+                            ChoiceButton {
+                                text: "↓";
+                                label: "Move \{provider.label} down";
+                                checkable: false;
+                                divider: true;
+                                enabled: index < Bridge.settings.providers.length - 1;
+                                clicked => { root.move-provider(index, 1); }
+                            }
+                        }
+                        RowLabel { text: provider.label; }
+                        Switch {
+                            label: provider.label;
+                            checked: provider.enabled;
+                            toggled => {
+                                root.draft = Bridge.settings;
+                                root.draft.providers = root.providers-toggled(index);
+                                Bridge.update-settings(root.draft);
+                            }
+                        }
+                    }
+                }
+            }
+
+            window := Group {
+                title: "Window";
+                if window.open: PositionRow { }
+            }
+
+            QuitButton {
+                text: "Quit Trayci";
+                clicked => { Bridge.quit(); }
             }
         }
-        CheckBox {
-            text: "Start on login";
-            checked: Bridge.settings.start-on-login;
-            toggled => {
-                root.draft = Bridge.settings;
-                root.draft.start-on-login = self.checked;
-                Bridge.update-settings(root.draft);
-            }
-        }
-        CheckBox {
-            text: "Compact view";
-            checked: Bridge.settings.compact;
-            toggled => {
-                root.draft = Bridge.settings;
-                root.draft.compact = self.checked;
-                Bridge.update-settings(root.draft);
-            }
-        }
-        CheckBox {
-            text: "Show remaining";
-            checked: Bridge.settings.show-remaining;
-            toggled => {
-                root.draft = Bridge.settings;
-                root.draft.show-remaining = self.checked;
-                Bridge.update-settings(root.draft);
-            }
-        }
-        Button {
-            text: "Theme: " + Bridge.settings.theme;
-            clicked => {
-                root.draft = Bridge.settings;
-                root.draft.theme = Bridge.settings.theme == "dark" ? "light"
-                    : Bridge.settings.theme == "light" ? "system" : "dark";
-                Bridge.update-settings(root.draft);
-            }
-        }
-        Button {
-            text: "Text size: " + Bridge.settings.font-scale;
-            clicked => {
-                root.draft = Bridge.settings;
-                root.draft.font-scale = Bridge.settings.font-scale >= 1.3 ? 0.9
-                    : Bridge.settings.font-scale >= 1.15 ? 1.3
-                    : Bridge.settings.font-scale >= 1 ? 1.15 : 1;
-                Bridge.update-settings(root.draft);
-            }
-        }
-        for provider in Bridge.settings.providers : Label {
-            text: provider.label + (provider.enabled ? " on" : " off");
-        }
-        HorizontalLayout {
-            spacing: 6px;
-            Label {
-                text: Bridge.settings.has-position
-                    ? "Position \{Bridge.settings.position-x}, \{Bridge.settings.position-y}"
-                    : "Position: at the tray";
-            }
-            Button {
-                text: "Reset";
-                enabled: Bridge.settings.positions-real && Bridge.settings.has-position;
-                clicked => { Bridge.reset-position(); }
-            }
-        }
-        Button {
-            text: "Quit Trayci";
-            clicked => { Bridge.quit(); }
+    }
+
+    if flick.content-height > flick.height: Rectangle {
+        x: parent.width - self.width - 2px;
+        width: 3px * Theme.scale;
+        height: flick.height * flick.height / flick.content-height;
+        y: -flick.content-y * (flick.height - self.height) / (flick.content-height - flick.height);
+        border-radius: self.width / 2;
+        background: Theme.tint-strong;
+    }
+
+    // The whole list is written, not just the pair that swapped: a partial order would leave the
+    // providers it omits to the usage sort, which is what the user is overriding. Each is a new
+    // array: writing into Bridge.settings.providers would edit Rust's model in place.
+    // ponytail: spelled out for the three built-in providers; add a slot when a fourth arrives.
+    function move-provider(index: int, delta: int) {
+        root.draft = Bridge.settings;
+        root.draft.providers = [
+            root.moved-slot(0, index, delta),
+            root.moved-slot(1, index, delta),
+            root.moved-slot(2, index, delta),
+        ];
+        Bridge.update-settings(root.draft);
+    }
+    pure function moved-slot(slot: int, index: int, delta: int) -> ProviderSetting {
+        Bridge.settings.providers[slot == index ? index + delta : slot == index + delta ? index : slot]
+    }
+    pure function providers-toggled(index: int) -> [ProviderSetting] {
+        [root.toggled-slot(0, index), root.toggled-slot(1, index), root.toggled-slot(2, index)]
+    }
+    pure function toggled-slot(slot: int, index: int) -> ProviderSetting {
+        {
+            id: Bridge.settings.providers[slot].id,
+            label: Bridge.settings.providers[slot].label,
+            enabled: Bridge.settings.providers[slot].enabled != (slot == index),
         }
     }
 }

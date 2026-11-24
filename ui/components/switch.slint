@@ -1,0 +1,54 @@
+// Figma Switch (10:126). Controlled: it shows `checked` and only asks for the change.
+import { Theme } from "../theme.slint";
+
+export component Switch inherits Rectangle {
+    in property <bool> checked;
+    in property <string> label;
+    callback toggled();
+
+    width: 31px * Theme.scale;
+    height: 18px * Theme.scale;
+    border-radius: self.height / 2;
+    background: root.checked ? Theme.accent : Theme.tint-strong;
+    animate background { duration: 150ms; }
+
+    accessible-role: switch;
+    accessible-label: root.label;
+    accessible-checkable: true;
+    accessible-checked: root.checked;
+    accessible-action-default => { root.toggled(); }
+
+    Rectangle {
+        x: (root.checked ? 15px : 2px) * Theme.scale;
+        width: 14px * Theme.scale;
+        height: self.width;
+        border-radius: self.width / 2;
+        background: Theme.paper;
+        animate x { duration: 150ms; }
+    }
+
+    // Click does not take focus, so the ring only shows for the keyboard, like :focus-visible.
+    focus := FocusScope {
+        focus-on-click: false;
+        key-pressed(event) => {
+            if event.text == Key.Space || event.text == Key.Return {
+                root.toggled();
+                return accept;
+            }
+            reject
+        }
+    }
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.toggled(); }
+    }
+    if focus.has-focus: Rectangle {
+        x: -2px;
+        y: -2px;
+        width: parent.width + 4px;
+        height: parent.height + 4px;
+        border-radius: self.height / 2;
+        border-width: 1.5px;
+        border-color: Theme.accent;
+    }
+}

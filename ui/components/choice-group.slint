@@ -1,0 +1,89 @@
+// Figma ChoiceGroup (10:163) and ChoiceButton (10:138): a segmented control. The provider reorder
+// pair uses the same frame and buttons, as actions rather than a choice.
+import { Theme } from "../theme.slint";
+
+export component ChoiceButton inherits Rectangle {
+    in property <string> text;
+    in property <string> label: self.text;
+    in property <bool> pressed;
+    in property <bool> checkable: true;
+    in property <bool> divider;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    height: 21px * Theme.scale;
+    background: root.pressed ? Theme.tint : transparent;
+    opacity: root.enabled ? 1 : 0.55;
+
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-checkable: root.checkable;
+    accessible-checked: root.pressed;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { root.clicked(); }
+
+    HorizontalLayout {
+        padding-left: 7px * Theme.scale + (root.divider ? 1px : 0);
+        padding-right: 7px * Theme.scale;
+        Text {
+            text: root.text;
+            font-size: 10px * Theme.scale;
+            color: root.pressed ? Theme.paper : Theme.muted;
+            vertical-alignment: center;
+        }
+    }
+    if root.divider: Rectangle {
+        x: 0;
+        width: 1px;
+        background: Theme.line;
+    }
+    focus := FocusScope {
+        enabled: root.enabled;
+        focus-on-click: false;
+        key-pressed(event) => {
+            if event.text == Key.Space || event.text == Key.Return {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+    TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    if focus.has-focus: Rectangle {
+        border-width: 2px;
+        border-color: Theme.accent;
+    }
+}
+
+export component ChoiceFrame inherits Rectangle {
+    horizontal-stretch: 0;
+    border-width: 1px;
+    border-radius: 5px * Theme.scale;
+    border-color: Theme.line;
+    clip: true;
+    HorizontalLayout {
+        padding: 1px;
+        @children
+    }
+}
+
+export component ChoiceGroup inherits ChoiceFrame {
+    in property <[string]> options;
+    in property <int> selected;
+    in property <string> label;
+    callback chosen(int);
+
+    accessible-role: groupbox;
+    accessible-label: root.label;
+
+    for option[index] in root.options: ChoiceButton {
+        text: option;
+        pressed: index == root.selected;
+        divider: index > 0;
+        clicked => { root.chosen(index); }
+    }
+}
