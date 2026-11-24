@@ -236,4 +236,19 @@ mod windows {
         trayci_core::settings::config_base().hash(&mut hasher);
         format!(r"\\.\pipe\trayci-{:016x}", hasher.finish())
     }
+
+    #[cfg(test)]
+    mod tests {
+        #[test]
+        fn a_second_launch_asks_the_first_to_show() {
+            let first = super::claim().expect("the first launch owns the pipe");
+            let (shown, show) = std::sync::mpsc::channel();
+            first.serve(move || {
+                let _ = shown.send(());
+            });
+            assert!(super::claim().is_none(), "a second launch exits");
+            show.recv_timeout(std::time::Duration::from_secs(5))
+                .expect("the first instance was asked to show");
+        }
+    }
 }

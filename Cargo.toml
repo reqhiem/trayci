@@ -113,9 +113,10 @@ files = { "resources/trayci-appimage.desktop" = "usr/share/applications/trayci.d
 # %LOCALAPPDATA%\Trayci\trayci.exe, which install.ps1 starts.
 installMode = "currentUser"
 # The template has no uninstall hook, but a section named `un.*` declared here joins the
-# uninstaller: it removes the Run value autostart.rs writes, as the Tauri installer did.
+# uninstaller: it removes the Run value autostart.rs writes, as the Tauri installer did. No quotes:
+# cargo-packager's template escaping turns `"` into a literal quote.
 preinstallSection = """
 Section un.RemoveAutostart
-  DeleteRegValue HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Run" "Trayci"
+  DeleteRegValue HKCU Software\\Microsoft\\Windows\\CurrentVersion\\Run Trayci
 SectionEnd
 """
