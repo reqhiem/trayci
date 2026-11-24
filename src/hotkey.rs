@@ -5,11 +5,9 @@ use global_hotkey::{
     GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState,
 };
 
-/// Registers the shortcut for as long as the returned manager lives. Call it on the thread that
-/// runs the event loop: on Windows the hotkey arrives through that thread's message queue.
+/// Registered while the returned manager lives. Event loop thread only (Windows message queue).
 pub fn register(popover: Popover) -> Option<GlobalHotKeyManager> {
-    // A grab through XWayland only sees keys typed into X11 windows, so on Wayland there is no
-    // shortcut at all rather than one that works only sometimes.
+    // An XWayland grab only sees keys typed into X11 windows: none beats a flaky shortcut.
     #[cfg(target_os = "linux")]
     if !crate::popover::is_x11() {
         return None;

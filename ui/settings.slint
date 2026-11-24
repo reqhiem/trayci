@@ -1,5 +1,4 @@
-// The settings view below the shared topbar (Figma 48:4316). Named SettingsPage because
-// `SettingsView` is the struct it edits.
+// The settings view (Figma 48:4316); SettingsPage because `SettingsView` is the struct it edits.
 import { Bridge, ProviderSetting, SettingsView } from "bridge.slint";
 import { Theme } from "theme.slint";
 import { QuitButton, RowButton } from "components/button.slint";
@@ -94,11 +93,8 @@ component AxisLabel inherits Text {
     vertical-alignment: center;
 }
 
-// The X and Y the popover is placed at, as an alternative to dragging it (issue #39).
-//
-// Both coordinates travel together: committing one alone would send the popover to a corner it
-// was never asked to go to. What is typed is kept until it has become a position, so a
-// half-typed number is not one.
+// #39: typed X and Y, committed together or the popover goes to a corner never asked for. Kept
+// as a draft until both make a position.
 component PositionRow inherits SettingRow {
     property <bool> real: Bridge.settings.positions-real;
     property <bool> saved: Bridge.settings.has-position;
@@ -115,9 +111,7 @@ component PositionRow inherits SettingRow {
     pure function integer(text: string) -> bool {
         text != "" && text.is-float() && text.to-float() == round(text.to-float())
     }
-    // The draft is only dropped once it has become a position. Clearing it on every focus loss
-    // threw away whichever field was filled first, so with no position saved yet, tabbing from X
-    // to Y emptied X and neither could ever be set.
+    // The draft drops only once it is a position: dropping it on blur would empty X on Tab to Y.
     function commit() {
         if root.integer(x.text) && root.integer(y.text) {
             root.drafting = false;
@@ -202,11 +196,9 @@ component PositionRow inherits SettingRow {
 }
 
 export component SettingsPage inherits Rectangle {
-    // The old popover's tallest window, less the topbar stacked above this view (33px and its
-    // hairline, as topbar.slint draws it for settings).
+    // At most 1000px with the settings topbar (33px and its hairline, as topbar.slint draws it).
     preferred-height: min(body.preferred-height, 1000px - 33px * Theme.scale - 1px);
-    // Placed below the topbar, the default (the window's height) would push the end of a capped,
-    // scrolling body out of the window.
+    // Below the topbar, the default (window height) would push a scrolling body's end out.
     height: self.preferred-height;
 
     // A copy to edit: Bridge.settings is Rust's, and update-settings takes the whole struct.
@@ -346,8 +338,7 @@ export component SettingsPage inherits Rectangle {
                 title: "Providers";
                 if providers.open: VerticalLayout {
                     for provider[index] in Bridge.settings.providers: SettingRow {
-                        // Each save replaces the model and so these rows: the keyboard focus
-                        // comes back to the control it was on, now in this provider's new row.
+                        // Each save replaces these rows: focus returns to its control here.
                         init => {
                             if root.refocus == provider.id + ":switch" {
                                 enable.focus();
@@ -423,9 +414,8 @@ export component SettingsPage inherits Rectangle {
         background: Theme.tint-strong;
     }
 
-    // The whole list is written, not just the pair that swapped: a partial order would leave the
-    // providers it omits to the usage sort, which is what the user is overriding. Each is a new
-    // array: writing into Bridge.settings.providers would edit Rust's model in place.
+    // The whole list, each a new array: a partial order leaves the rest to the usage sort, and
+    // writing into Bridge.settings.providers would edit Rust's model in place.
     // ponytail: spelled out for the three built-in providers; add a slot when a fourth arrives.
     function move-provider(index: int, delta: int) {
         root.draft = Bridge.settings;

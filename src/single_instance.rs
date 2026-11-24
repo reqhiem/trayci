@@ -1,8 +1,6 @@
 //! One tray app per config dir: a second launch asks the first to show its popover, then exits.
-//! It is also how to open the popover without the tray: run `trayci tray` again.
 
-/// FNV-1a of the config dir, which keys the socket or pipe name. Not `DefaultHasher`: it may change
-/// between Rust releases, and two builds would then miss each other.
+/// FNV-1a, not `DefaultHasher`, which may change between Rust releases and split two builds.
 fn config_hash(config_base: &std::path::Path) -> u64 {
     config_base
         .as_os_str()
@@ -30,13 +28,9 @@ mod linux {
     /// The first instance; `None` inside when there is no socket, so it runs alone.
     pub struct Instance(Option<UnixListener>);
 
-    /// `None` when another instance runs for this config dir: it has been asked to show its
-    /// popover, and this one should exit.
-    ///
-    /// The socket lives in `XDG_RUNTIME_DIR`, which only its user can enter. An abstract socket
-    /// let any local user take the name first, so every later launch connected to theirs and
-    /// exited, or send `show` to ours.
+    /// `None` when another instance runs for this config dir and was asked to show its popover.
     pub fn claim() -> Option<Instance> {
+        // `XDG_RUNTIME_DIR`, not an abstract socket, whose name any local user could take first.
         let Some(runtime_dir) = std::env::var_os("XDG_RUNTIME_DIR").filter(|dir| !dir.is_empty())
         else {
             eprintln!("trayci: XDG_RUNTIME_DIR is unset, so a second launch starts a second tray");
@@ -88,8 +82,7 @@ mod linux {
         }
     }
 
-    /// One socket per config dir, so a test run with its own `XDG_CONFIG_HOME` is its own
-    /// instance. The name hashes the dir to stay under the 108-byte socket path limit.
+    /// Hashes the config dir to stay under the 108-byte socket path limit.
     fn socket_path(runtime_dir: &Path, config_base: &Path) -> PathBuf {
         let hash = super::config_hash(config_base);
         runtime_dir.join(format!("trayci-{hash:016x}.sock"))
@@ -146,8 +139,7 @@ mod windows {
     /// The first instance; `None` inside when the pipe could not be made, so it runs alone.
     pub struct Instance(Option<File>);
 
-    /// `None` when another instance runs for this config dir: it has been asked to show its
-    /// popover, and this one should exit.
+    /// `None` when another instance runs for this config dir and was asked to show its popover.
     pub fn claim() -> Option<Instance> {
         match listen(true) {
             Ok(pipe) => Some(Instance(Some(pipe))),
@@ -181,8 +173,7 @@ mod windows {
                 // a client connects.
                 let connected =
                     unsafe { ConnectNamedPipe(pipe.as_raw_handle(), std::ptr::null_mut()) } != 0;
-                // A launch that connected before the call, or that already wrote and closed:
-                // what it wrote is still in the pipe.
+                // Connected early, or already wrote and closed: what it wrote is still in the pipe.
                 let early = [ERROR_PIPE_CONNECTED, ERROR_NO_DATA]
                     .map(|code| Some(code as i32))
                     .contains(&io::Error::last_os_error().raw_os_error());
@@ -196,8 +187,7 @@ mod windows {
                 if !connected && !early {
                     continue;
                 }
-                // Every user may open the pipe for reading; one that never writes must not
-                // block the launches behind it.
+                // Any user may open the pipe; one that never writes must not block the rest.
                 let show = Arc::clone(&show);
                 std::thread::spawn(move || {
                     let mut request = Vec::new();
@@ -237,8 +227,7 @@ mod windows {
         Ok(unsafe { File::from_raw_handle(handle) })
     }
 
-    /// Pipe names are machine-wide and cannot hold a backslash, so the name is a hash of the
-    /// config dir: one instance per user, and one per config dir when testing.
+    /// Pipe names are machine-wide and cannot hold a backslash, so the config dir is hashed.
     fn name() -> String {
         let hash = super::config_hash(&trayci_core::settings::config_base());
         format!(r"\\.\pipe\trayci-{hash:016x}")

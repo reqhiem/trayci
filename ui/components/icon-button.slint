@@ -1,7 +1,6 @@
 import { Theme } from "../theme.slint";
 
-// Tooltip content in the popover's colours: the built-in text tooltip follows the std-widgets
-// Palette, which ignores Theme.
+// Tooltip content in Theme colours: the built-in text tooltip follows the std-widgets Palette.
 export component TipBox inherits Rectangle {
     in property <string> text;
 
@@ -26,19 +25,14 @@ export component TipBox inherits Rectangle {
     }
 }
 
-// The KeyFocus the keyboard was last on, by name, for the elements that have to take the focus
-// back: Rust rebuilds the provider rows and detail panes with every model it sends, and a focus
-// left on an element that is gone, or hidden, receives no key, Escape included. Only gaining
-// the focus writes it: Slint also drops the focus of an element that turned invisible, and that
-// is exactly the case that has to be restored.
+// The KeyFocus the keyboard was last on, so rebuilt or re-shown elements can take it back: a
+// removed or hidden focus gets no keys. Only gaining focus writes it, as hiding also unfocuses.
 export global KeyboardFocus {
     in-out property <string> owner;
 }
 
-// Keyboard access for a clickable element, laid over it: Tab focuses it, Space or Enter activates
-// it, and an inset accent ring shows while it has focus. A click doesn't focus it, so the ring is
-// the keyboard's alone, like :focus-visible. Other keys are rejected and reach the popover's own
-// handler, so Escape still unpins, then hides.
+// Keyboard access over a clickable element: Tab, Space/Enter and an inset focus ring. Clicks don't
+// focus it (like :focus-visible); other keys pass on, so Escape still reaches the popover.
 export component KeyFocus inherits FocusScope {
     in property <length> radius;
     // What KeyboardFocus.owner reads while the keyboard is here.
@@ -67,7 +61,7 @@ export component KeyFocus inherits FocusScope {
     }
 }
 
-// A header button: a 20×24 icon drawn muted, paper while hovered or pressed.
+// A header button.
 export component IconButton inherits Rectangle {
     in property <image> icon;
     in property <string> label;
@@ -105,8 +99,7 @@ export component IconButton inherits Rectangle {
         accessible-role: none;
     }
 
-    // Stays focusable while disabled: refresh disables itself when activated, and losing focus
-    // there would leave no element to take Escape.
+    // Focusable while disabled: refresh disables itself when activated, and Escape needs a focus.
     key := KeyFocus {
         radius: root.border-radius;
         activated => {

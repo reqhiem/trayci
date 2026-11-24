@@ -1,5 +1,4 @@
-// The contract between the Rust side and the views. Rust fills everything already formatted and
-// sorted (src/view.rs), so the views only lay it out.
+// The Rust ↔ views contract: Rust sends everything formatted and sorted (src/view.rs).
 
 export enum Severity { low, medium, high, critical }
 
@@ -77,11 +76,11 @@ export global Bridge {
     callback reset-position();
     callback hide();
     callback quit();
-    callback begin-drag();                    // header pointer-down; W3 implements the move
+    callback begin-drag();
     callback reset-transient();               // Rust → UI on hide: clear hover/pin, back to usage
 
-    // Implemented here because a component cannot handle a global's callback. Rust must invoke it,
-    // never set a handler of its own, which would replace this one.
+    // Here because a component cannot handle a global's callback. Rust must only invoke it: a
+    // handler of its own would replace this one.
     reset-transient => {
         self.settings-open = false;
         self.pinned = "";

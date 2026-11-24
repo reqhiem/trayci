@@ -7,8 +7,7 @@ fn path() -> PathBuf {
     trayci_core::settings::config_base().join("autostart/trayci.desktop")
 }
 
-/// This executable as a new process should start it: the AppImage itself rather than its mount,
-/// which goes away with the process that mounted it.
+/// The AppImage itself rather than its mount, which goes away with the process that mounted it.
 #[cfg(target_os = "linux")]
 pub fn executable() -> io::Result<std::path::PathBuf> {
     trayci_core::providers::common::env_path("APPIMAGE").map_or_else(std::env::current_exe, Ok)

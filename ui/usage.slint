@@ -1,6 +1,5 @@
-// The usage view: one row per provider, and the detail pane a row reveals (Figma ProviderRow,
-// DetailPane). Rows set Bridge.hovered and Bridge.pinned by provider id; app.slint clears the
-// hover once the pointer leaves the popover.
+// The usage view and its detail pane (Figma ProviderRow, DetailPane). Rows set Bridge.hovered and
+// Bridge.pinned by provider id; app.slint clears the hover when the pointer leaves the popover.
 import { Bridge, MeterLine, MeterView, ProviderView, Severity, SettingsView } from "bridge.slint";
 import { Theme } from "theme.slint";
 import { Meter } from "components/meter.slint";
@@ -8,8 +7,7 @@ import { ProviderIcon } from "components/provider-icon.slint";
 import { KeyboardFocus, KeyFocus, TipBox } from "components/icon-button.slint";
 
 
-// 11px on Figma's 14px line, which is shorter than the font's own. Preferred, not fixed: a
-// fixed-height item sits at the top of a taller cell instead of in its middle.
+// 11px on Figma's 14px line. Preferred, not fixed: a fixed-height item top-aligns in a taller cell.
 component Small inherits Text {
     color: Theme.muted;
     font-size: 11px * Theme.scale;
@@ -26,9 +24,8 @@ component Name inherits Text {
     vertical-alignment: center;
 }
 
-// The number beside a meter. Red once the window is nearly spent, whichever way it counts.
-// A minimum width, not a fixed one: "100%" (remaining, on a fresh window) is wider than the
-// two-digit cell Figma draws, and must not be elided.
+// Red once nearly spent, either way it counts. A min width, not fixed: "100%" is wider than
+// Figma's two-digit cell and must not elide.
 component Percent inherits Small {
     in property <MeterView> meter;
     text: self.meter.percent;
@@ -50,7 +47,6 @@ component Spacer inherits Rectangle {
     horizontal-stretch: 1;
 }
 
-// One meter of a detailed row: label, a 46px bar, percent.
 component RowMeter inherits HorizontalLayout {
     in property <MeterView> meter;
     spacing: 6px * Theme.scale;
@@ -99,8 +95,7 @@ component ProviderRow inherits Rectangle {
         clicked => {
             root.toggle-pin();
         }
-        // Only entering moves the hover: the detail pane arriving under the pointer must not count
-        // as leaving the row.
+        // Only entering moves the hover: the pane appearing under the pointer is not a row exit.
         changed has-hover => {
             if self.has-hover {
                 Bridge.hovered = root.provider.id;
@@ -160,7 +155,6 @@ component ProviderRow inherits Rectangle {
             Chevron { }
         }
 
-        // Two meters a line, so the bars of each column line up; a wide label takes the whole line.
         VerticalLayout {
             padding-top: root.lines.length > 0 ? 8px * Theme.scale : 0;
             spacing: 6px * Theme.scale;
@@ -196,9 +190,8 @@ component ProviderRow inherits Rectangle {
     // popover reopens or the row is rebuilt, does not: the popover reopens without a pane.
     KeyFocus {
         name: "row:" + root.provider.id;
-        // Rebuilt with every providers model: the new row takes the keyboard back.
-        // Not while settings show: a click there leaves the token behind, and the hidden row would
-        // take the keyboard from the settings control.
+        // Rebuilt with every providers model: the new row takes the keyboard back, unless settings
+        // show, where a stale token would steal it from a settings control.
         init => {
             if KeyboardFocus.owner == self.name && !Bridge.settings-open {
                 self.focus();
@@ -223,8 +216,7 @@ export component UsageView inherits Rectangle {
 
     list := VerticalLayout {
         alignment: start;
-        // Collapsed rather than behind an `if`: there Slint measures the wrapped text at a width of
-        // its own choosing, and a two-line error pushed the last row out of the window.
+        // Collapsed, not behind an `if`, where Slint measures wrapped text at the wrong width.
         Rectangle {
             height: Bridge.error != "" ? self.preferred-height : 0;
             visible: Bridge.error != "";
@@ -264,7 +256,6 @@ export component UsageView inherits Rectangle {
     }
 }
 
-// One window: "<detail label> · resets in …", the percent, then a full-width 4px meter.
 component DetailEntry inherits Rectangle {
     in property <MeterView> meter;
 
@@ -444,8 +435,7 @@ component Detail inherits Rectangle {
     }
 }
 
-// The pane beside the rows. It is as tall as the window, which follows the rows, and scrolls when
-// its windows need more.
+// As tall as the window, which follows the rows; scrolls when its windows need more.
 export component DetailPane inherits Rectangle {
     background: Theme.ink;
     property <string> shown: Bridge.pinned != "" ? Bridge.pinned : Bridge.hovered;
@@ -454,8 +444,7 @@ export component DetailPane inherits Rectangle {
         content-height: content.preferred-height;
         content := VerticalLayout {
             alignment: start;
-            // Every provider's detail, all but the shown one collapsed: one behind an `if` would be
-            // measured at the wrong width, and a wrapped error would fall outside the scroll range.
+            // All but the shown one collapsed: behind an `if`, Slint measures at the wrong width.
             for provider in Bridge.providers : Detail {
                 provider: provider;
                 visible: provider.id == root.shown;

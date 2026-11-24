@@ -1,5 +1,4 @@
-// Release builds link for the GUI subsystem so Windows opens no console window for the tray app;
-// the attribute is ignored on other targets. Debug builds keep the console for `cargo run`.
+// Release builds use the GUI subsystem so Windows opens no console; debug keeps it for `cargo run`.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod autostart;
@@ -40,9 +39,8 @@ fn main() {
         print!("{output}");
         std::process::exit(code);
     }
-    // ponytail: Windows keeps launching the tray for every other invocation: the GUI-subsystem exe
-    // cannot hold an interactive terminal, so a console `trayci-cli.exe` is the follow-up for a
-    // Windows terminal view.
+    // ponytail: no TUI on Windows, as a GUI-subsystem exe holds no terminal; a console
+    // `trayci-cli.exe` would add one.
     #[cfg(target_os = "linux")]
     {
         use std::io::IsTerminal;
@@ -86,8 +84,7 @@ pub fn providers(settings: Arc<Mutex<TrayciSettings>>) -> Vec<Box<dyn UsageProvi
     ]
 }
 
-/// Start the tray app without the terminal and return the prompt at once. Its own process group
-/// keeps Ctrl-C and the shell's hangup away from it.
+/// Relaunches the tray detached; its own process group keeps Ctrl-C and the shell's hangup away.
 #[cfg(target_os = "linux")]
 fn detach() -> ! {
     use std::os::unix::process::CommandExt;
@@ -112,9 +109,8 @@ fn detach() -> ! {
 }
 
 /// Borrow the shell's console for CLI output, unless stdout is already piped or redirected.
-// ponytail: the shell does not wait for a GUI-subsystem exe, so an unpiped interactive run prints
-// after the prompt and leaves no exit code; a console `trayci-cli` bin (required-features, built
-// only by dist:win) fixes that if interactive CLI use on Windows matters.
+// ponytail: the shell doesn't wait for a GUI-subsystem exe, so output lands after the prompt with
+// no exit code; a console `trayci-cli` bin fixes that if interactive CLI use on Windows matters.
 #[cfg(windows)]
 fn attach_parent_console() {
     use std::os::windows::io::AsRawHandle;

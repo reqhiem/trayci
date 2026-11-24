@@ -1,8 +1,7 @@
 import { Severity } from "../bridge.slint";
 import { Theme } from "../theme.slint";
 
-// Always shows use, even when the number beside it counts what remains. Rows use it 3px tall,
-// the detail pane 4px.
+// Always shows use, even when the number beside it counts what remains.
 export component Meter inherits Rectangle {
     in property <float> used;       // 0..100
     in property <Severity> severity;

@@ -1,5 +1,4 @@
-//! The tray app: the usage service on a tokio runtime, the Slint popover on this thread, and the
-//! tray icon between them.
+//! The tray app: usage service on tokio, Slint popover on this thread, tray icon between them.
 use crate::{
     autostart, hotkey,
     popover::{self, Popover},
@@ -22,8 +21,7 @@ use trayci_core::{
     TrayciSettings, TrayciSettingsPatch, UsageFetchReason, UsageService, UsageState,
 };
 
-/// Everything a callback needs. Sendable, so tokio tasks can hold it; the Slint side is only ever
-/// touched on the event loop.
+/// Shared with callbacks and tokio tasks; the Slint side is only touched on the event loop.
 struct App {
     ui: slint::Weak<ui::Popover>,
     popover: Popover,
@@ -31,8 +29,7 @@ struct App {
     service: Arc<UsageService>,
     repository: AsyncMutex<SettingsRepository>,
     settings: Arc<Mutex<TrayciSettings>>,
-    /// What the bridge last showed. Edits are diffed against it, not against the saved settings:
-    /// those can be one save ahead of what the edit was made from, and the diff would revert it.
+    /// Edits diff against this, not the saved settings: those can be a save ahead and get reverted.
     shown: Mutex<Option<TrayciSettings>>,
     state: Mutex<UsageState>,
 }
@@ -122,8 +119,7 @@ pub fn run(runtime: Runtime) -> Result<(), Box<dyn Error>> {
     });
 
     let result = slint::run_event_loop_until_quit();
-    // What `RunEvent::ExitRequested` did under Tauri, awaited here: `App::update` only spawns, and
-    // the runtime would drop the write.
+    // Awaited: `App::update` only spawns, and the runtime would drop the write.
     if let Some(position) = popover.take_pending() {
         let saved = runtime.block_on(async {
             let patch = position_patch(Some(position));
@@ -209,8 +205,7 @@ impl App {
                 .into(),
         );
         let mut shown = self.shown.lock().expect("shown lock");
-        // Setting an equal struct still replaces the providers model, which rebuilds their rows
-        // and drops the keyboard focus on them.
+        // An equal struct still rebuilds the provider rows and drops their keyboard focus.
         if shown.as_ref() != Some(&settings) {
             bridge.set_settings(view::settings(&settings, popover::positions_are_real()));
             *shown = Some(settings);
@@ -232,9 +227,8 @@ impl App {
     fn update(self: &Arc<Self>, patch: TrayciSettingsPatch) {
         let app = Arc::clone(self);
         self.runtime.spawn(async move {
-            // Read and stored under the repository lock: with two quick edits, a `previous` read
-            // outside it can already hold the other save, and a provider switch would then not
-            // count as a change.
+            // Under one lock: with two quick edits, `previous` read outside it could already hold
+            // the other save and hide a provider switch.
             let (previous, settings) = {
                 let mut repository = app.repository.lock().await;
                 let previous = repository.get();
@@ -246,16 +240,13 @@ impl App {
                 (previous, settings)
             };
             app.show_error(String::new());
-            // Every drag end saves a position through here; only a changed switch rewrites the
-            // autostart entry. `run` syncs it once at startup.
+            // Every drag end saves through here; only a changed switch rewrites autostart.
             if previous.start_on_login != settings.start_on_login {
                 if let Err(error) = autostart::set_enabled(settings.start_on_login).await {
                     app.show_error(error.to_string());
                 }
             }
-            // Themes, text size and percentage style change nothing a provider would answer
-            // differently, so they must not spend a request: toggling them used to refresh every
-            // provider.
+            // Display-only settings must not spend a provider request.
             app.service
                 .settings_changed(previous.providers != settings.providers)
                 .await;
@@ -278,8 +269,8 @@ fn notify(runtime: &Handle, request: NotificationRequest) {
     });
 }
 
-/// A toast. It shows as Trayci only from an install: Windows names a toast after the Start menu
-/// shortcut whose AppUserModelID matches, and the installer stamps the identifier on it.
+/// Shows as Trayci only from an install: Windows names a toast after the Start menu shortcut
+/// whose AppUserModelID matches, which the installer stamps.
 #[cfg(windows)]
 fn notify(runtime: &Handle, request: NotificationRequest) {
     runtime.spawn_blocking(move || {

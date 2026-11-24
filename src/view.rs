@@ -1,5 +1,4 @@
-//! What the Slint views show, built from the service's state and the settings, and the way back
-//! from an edited settings view to a patch.
+//! Slint view models from the service's state and settings, and the patch back from an edit.
 use crate::ui::{MeterLine, MeterView, ProviderSetting, ProviderView, SettingsView, Severity};
 use slint::{Model, ModelRc, SharedString, VecModel};
 use trayci_core::{
@@ -8,8 +7,7 @@ use trayci_core::{
     TrayciSettings, TrayciSettingsPatch, UsageState, UsageStatus, UsageWindow,
 };
 
-/// Characters; "Claude/GPT wk" still fits half a provider row at any text size. A longer label
-/// takes the whole line instead of being cut.
+/// In chars: "Claude/GPT wk" still fits half a row at any text size; longer takes the whole line.
 const WIDE_LABEL: usize = 14;
 
 const BUILT_IN: [(&str, &str); 3] = [
@@ -62,8 +60,7 @@ fn provider(snapshot: &ProviderUsageSnapshot, mode: PercentageDisplay, now: u64)
     }
 }
 
-/// Two meters a line, left then right, so the bars of a column line up. A wide meter takes a line
-/// of its own instead of being cut.
+/// Two meters a line so a column's bars line up; a wide meter gets a line of its own.
 fn lines(meters: &[MeterView]) -> Vec<MeterLine> {
     let mut lines: Vec<MeterLine> = Vec::new();
     for meter in meters {
@@ -81,7 +78,7 @@ fn lines(meters: &[MeterView]) -> Vec<MeterLine> {
     lines
 }
 
-/// "free" → "Free", as the webview's `text-transform: capitalize` showed a plan.
+/// Capitalizes every word, like CSS `text-transform: capitalize`.
 fn capitalized(text: &str) -> String {
     text.split(' ')
         .map(|word| {
@@ -184,13 +181,11 @@ pub fn settings(settings: &TrayciSettings, positions_real: bool) -> SettingsView
     }
 }
 
-/// `Some(edited)` when it differs from `current`.
 fn changed<T: PartialEq>(current: T, edited: T) -> Option<T> {
     (current != edited).then_some(edited)
 }
 
-/// What the user changed in `edited`, the settings view they sent back. The window position is
-/// left out: it only moves through `set-position` and `reset-position`.
+/// What the user changed; the window position only moves through set- and reset-position.
 pub fn patch(current: &TrayciSettings, edited: &SettingsView) -> TrayciSettingsPatch {
     let notifications = NotificationSettingsPatch {
         quota50: changed(current.notifications.quota50, edited.notify_50),
@@ -224,7 +219,7 @@ pub fn patch(current: &TrayciSettings, edited: &SettingsView) -> TrayciSettingsP
     let providers_changed =
         providers.claude.is_some() || providers.codex.is_some() || providers.antigravity.is_some();
 
-    // An empty order sorts by use. Sending back the order the view showed must not pin it.
+    // An empty order sorts by use: sending back the shown order must not pin it.
     let shown = provider_order(current)
         .into_iter()
         .map(|(id, _)| SharedString::from(id))
@@ -268,8 +263,7 @@ pub fn patch(current: &TrayciSettings, edited: &SettingsView) -> TrayciSettingsP
         .into_iter()
         .find(|theme| edited.theme == theme_name(*theme))
         .and_then(|theme| changed(current.theme, theme)),
-        // Through f32 1.15 comes back as 1.1499999761581420: compare and store at the precision
-        // the setting has.
+        // Through f32, 1.15 comes back as 1.1499999761581420: compare at the setting's precision.
         font_scale: changed(
             (current.font_scale * 100.0).round(),
             (f64::from(edited.font_scale) * 100.0).round(),

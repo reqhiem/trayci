@@ -1,6 +1,4 @@
-//! Where X11 says the popover may go, and the focus request muffin honours. winit keeps its X
-//! connection to itself, so this opens one of its own: window ids are the server's, not a
-//! connection's.
+//! X11 queries on a connection of our own: winit keeps its own private; window ids are server-wide.
 use super::Rect;
 use slint::winit_030::winit::{
     dpi::{PhysicalPosition, PhysicalSize},
@@ -42,8 +40,7 @@ struct X11 {
     atoms: Atoms,
 }
 
-/// Whether winit runs on X11. The same test winit makes, so the XWayland of a Wayland session is
-/// never taken for the display the popover is on.
+/// winit's own test, so a Wayland session's XWayland is never taken for the popover's display.
 pub fn is_x11() -> bool {
     let set = |name| std::env::var_os(name).is_some_and(|value| !value.is_empty());
     !set("WAYLAND_DISPLAY") && !set("WAYLAND_SOCKET") && set("DISPLAY")
@@ -88,8 +85,7 @@ fn connect() -> Result<X11, Box<dyn std::error::Error>> {
     })
 }
 
-/// The work area of the current desktop: the screen minus its panels (issue #42). It spans every
-/// monitor; the caller intersects it with the one the popover goes to, as GDK did.
+/// #42: the current desktop's work area spans every monitor; the caller intersects it with one.
 pub fn work_area(_point: (f64, f64)) -> Option<Rect> {
     let x11 = x11()?;
     let desktop = x11
@@ -121,16 +117,7 @@ fn pointer() -> Option<QueryPointerReply> {
     x11.connection.query_pointer(x11.root).ok()?.reply().ok()
 }
 
-/// Keeps the just-mapped popover above other windows and out of the taskbar, and gives it the
-/// keyboard. `None` when the window is not on X11.
-///
-/// Both have to wait for the map. winit asks for the window level while the window is still
-/// unmapped, and a window manager ignores state requests for those, then drops the states again
-/// each time the window is hidden. winit's `focus_window` sends `CurrentTime`, which muffin cannot
-/// tie to a user interaction: it refuses it and only flags the window as demanding attention, so
-/// the popover opened unfocused and neither Escape nor clicking away closed it (issue #38). The
-/// server's time is newer than any interaction the window manager has recorded, so the same
-/// request stamped with it is honoured.
+/// Sets above/skip-taskbar and focus after each map: a WM ignores state requests before it.
 pub fn present(window: &Window) -> Option<()> {
     let RawWindowHandle::Xlib(handle) = window.window_handle().ok()?.as_raw() else {
         return None;
@@ -138,6 +125,7 @@ pub fn present(window: &Window) -> Option<()> {
     let window = u32::try_from(handle.window).ok()?;
     let x11 = x11()?;
     let atoms = &x11.atoms;
+    // #38: muffin ignores focus requests stamped CurrentTime.
     let time = x11.server_time()?;
     const ADD: u32 = 1;
     const FROM_APPLICATION: u32 = 1;

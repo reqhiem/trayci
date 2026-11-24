@@ -1,4 +1,3 @@
-//! The Windows tray icon, on `tray-icon`.
 use crate::popover::Popover;
 use slint::winit_030::winit::dpi::PhysicalPosition;
 use tokio::{runtime::Handle, sync::watch};
@@ -7,8 +6,7 @@ use tray_icon::{
     Icon, MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent,
 };
 
-/// Registers the tray icon and keeps its tooltip on the latest of `tooltips` for as long as the
-/// sender lives.
+/// Registers the tray icon; its tooltip follows `tooltips` while the sender lives.
 pub fn spawn(_runtime: &Handle, popover: Popover, mut tooltips: watch::Receiver<String>) {
     // tray-icon's window needs the message pump winit runs, and the icon is not Send: it is built
     // on the Slint thread once the loop polls this, and lives in it.
@@ -39,8 +37,7 @@ pub fn spawn(_runtime: &Handle, popover: Popover, mut tooltips: watch::Receiver<
             }
         };
 
-        // Both handlers run inside the tray window's procedure, so the popover moves later, from
-        // the loop.
+        // Both handlers run inside the tray window's procedure, so the popover acts from the loop.
         TrayIconEvent::set_event_handler(Some({
             let popover = popover.clone();
             move |event| {

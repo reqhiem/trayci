@@ -66,14 +66,12 @@ struct State {
     custom: Option<PhysicalPosition<i32>>,
     /// A dragged position not yet written to settings.
     pending: Option<PhysicalPosition<i32>>,
-    /// Where the window sat when the header was pressed, for as long as the window manager moves
-    /// it.
+    /// Where the window sat at the header press, while the window manager moves it.
     drag_origin: Option<PhysicalPosition<i32>>,
     /// The custom position when the drag began: `Moved` overwrites it as the window travels.
     custom_before_drag: Option<PhysicalPosition<i32>>,
     blurred_at: Option<Instant>,
-    /// Whether the popover has had focus since it was shown: X11 reports a focus-out as the
-    /// window maps, before the focus-in, and only a later one means the user clicked away.
+    /// Focused since shown: X11 sends a focus-out as the window maps, before the focus-in.
     focused: bool,
     /// Shown and not yet mapped: winit reports the map as the window's first focus event.
     mapping: bool,
@@ -93,9 +91,8 @@ impl State {
         positions_real: bool,
     ) {
         if landed == origin {
-            // A press on the header that moved nothing is a click, not a drag: storing where the
-            // popover already sat would pin it there and stop it following the tray icon. A drag
-            // that came back to its origin left a `Moved` spot behind that is no longer true.
+            // A click, or a drag back to its origin, keeps the pre-drag spot: storing this one
+            // would stop the popover following the tray icon.
             self.custom = self.custom_before_drag;
             self.pending = None;
         } else if positions_real {
@@ -105,8 +102,7 @@ impl State {
     }
 }
 
-/// The popover window's placement and visibility. Cheap to clone and to send to another thread,
-/// but every method must run on the Slint thread: post it there with `invoke_from_event_loop`.
+/// Cheap to clone and `Send`, but every method must run on the Slint thread.
 #[derive(Clone)]
 pub struct Popover {
     ui: slint::Weak<ui::Popover>,
@@ -128,8 +124,7 @@ impl Popover {
         popover
     }
 
-    /// Writes a dragged position to settings. The popover calls it once a drag ends and as it
-    /// hides, never while it moves.
+    /// Sets what saves a dragged position: run when a drag ends and on hide, never mid-move.
     pub fn on_save(&self, save: impl Fn((i32, i32)) + Send + Sync + 'static) {
         self.state().save = Some(Arc::new(save));
     }
@@ -139,8 +134,7 @@ impl Popover {
     }
 
     fn handle(&self, event: &WindowEvent) {
-        // Deferred: hiding or moving the window from inside its own event dispatch re-enters the
-        // backend.
+        // Deferred: hiding or moving the window from its own event dispatch re-enters the backend.
         let later = |action: fn(&Popover)| {
             let popover = self.clone();
             slint::Timer::single_shot(Duration::ZERO, move || action(&popover));
@@ -152,9 +146,8 @@ impl Popover {
                     state.custom = Some(*position);
                     state.pending = Some(*position);
                 }
-                // The window manager holds the pointer while it moves the window, so the release
-                // never arrives: the drag is over at the first event that comes with the button
-                // already up.
+                // The window manager holds the pointer during the move, so no release arrives:
+                // the first event with the button up ends the drag.
                 WindowEvent::CursorMoved { .. }
                 | WindowEvent::CursorEntered { .. }
                 | WindowEvent::CursorLeft { .. }
@@ -175,15 +168,13 @@ impl Popover {
                 later(Popover::present);
             }
             WindowEvent::Focused(true) => state.focused = true,
-            // A window manager that grabs the pointer for a move takes focus with it, so a
-            // focus-out during a drag is not the user clicking away.
+            // A window manager's move grab takes the focus: this focus-out is not a click away.
             WindowEvent::Focused(false)
                 if state.drag_origin.is_none() && std::mem::take(&mut state.focused) =>
             {
                 later(Popover::blurred);
             }
-            // The window follows its content's size, and growing taller from the tray icon would
-            // run off a bottom panel's monitor.
+            // Growing taller from the tray icon would run off a bottom panel's monitor.
             WindowEvent::Resized(_) => later(Popover::position),
             _ => {}
         }
@@ -212,8 +203,7 @@ impl Popover {
         let visible = ui.window().is_visible();
         {
             let mut state = self.state();
-            // A drag whose end never arrived would otherwise leave the popover unclosable for the
-            // rest of the session.
+            // A drag whose end never arrived would leave the popover unclosable.
             state.drag_origin = None;
             if let Some(anchor) = anchor.or_else(platform::cursor_position) {
                 state.anchor = Some(anchor);
@@ -267,8 +257,7 @@ impl Popover {
         self.hide();
     }
 
-    /// Hands the header drag to the window manager (issue #37). Only a move that follows counts
-    /// as the user's.
+    /// #37: hands the header drag to the window manager; only moves after this are the user's.
     pub fn begin_drag(&self) {
         let Some(ui) = self.ui.upgrade() else {
             return;
@@ -284,9 +273,8 @@ impl Popover {
         }
     }
 
-    /// Keeps where the popover came to rest, read from the window rather than the pointer: a
-    /// window manager stops a window at the edge of the work area while the pointer travels on,
-    /// and the pointer's target would be a position the popover was never at.
+    /// Keeps where the window came to rest, not the pointer: the WM stops a window at the work
+    /// area's edge while the pointer travels on.
     fn end_drag(&self, origin: PhysicalPosition<i32>) {
         let Some(ui) = self.ui.upgrade() else {
             return;
@@ -321,10 +309,7 @@ impl Popover {
         }
     }
 
-    /// Places the popover at a typed position, the manual counterpart of a drag (issue #39).
-    ///
-    /// The stored value is what was typed; `placement` clamps it to the work area on every use,
-    /// the same way it does for a dragged one.
+    /// #39: a typed position, stored as typed; `placement` clamps it to the work area on use.
     pub fn place(&self, position: (i32, i32)) {
         {
             let mut state = self.state();
@@ -352,8 +337,7 @@ impl Popover {
         let window = ui.window();
         let (anchor, custom) = {
             let state = self.state();
-            // Usage arriving mid-drag resizes the content, and re-placing the window then would
-            // snap it out from under the pointer.
+            // Re-placing on a mid-drag resize would snap the window out from under the pointer.
             if state.drag_origin.is_some() {
                 return;
             }
@@ -376,9 +360,8 @@ impl Popover {
             return;
         };
         let size = window.size();
-        // The master column, not the whole window, is what stays centred on the tray icon, so
-        // opening the detail pane grows to the side instead of sliding the rows out from under
-        // the pointer.
+        // Centre the master column, not the window, so the detail pane grows sideways instead of
+        // sliding the rows out from under the pointer.
         let scale = f64::from(ui.global::<ui::Theme>().get_scale());
         let column = COLUMN_WIDTH * scale * f64::from(window.scale_factor());
         let (x, y) = placement(
@@ -392,7 +375,6 @@ impl Popover {
     }
 }
 
-/// The bounds of the monitor holding `point`.
 fn monitor_bounds(ui: &ui::Popover, point: (f64, f64)) -> Option<Rect> {
     ui.window()
         .with_winit_window(|window| {
@@ -409,15 +391,13 @@ fn monitor_bounds(ui: &ui::Popover, point: (f64, f64)) -> Option<Rect> {
         .flatten()
 }
 
-/// How the popover window is created: a utility window, which muffin keeps out of the taskbar and
-/// alt-tab from its first map.
+/// A utility window on X11: muffin keeps it out of the taskbar and alt-tab from its first map.
 pub fn window_attributes(attributes: WindowAttributes) -> WindowAttributes {
     #[cfg(target_os = "linux")]
     {
         use slint::winit_030::winit::platform::x11::{WindowAttributesExtX11, WindowType};
         attributes.with_x11_window_type(vec![WindowType::Utility])
     }
-    // A tray flyout, not an app window: no taskbar button.
     #[cfg(windows)]
     {
         use slint::winit_030::winit::platform::windows::WindowAttributesExtWindows;
@@ -427,8 +407,7 @@ pub fn window_attributes(attributes: WindowAttributes) -> WindowAttributes {
     attributes
 }
 
-/// Whether a position the user sets survives. A Wayland compositor places toplevels itself, so
-/// there the coordinates would be written to settings and never applied.
+/// False on Wayland, whose compositor places toplevels itself and ignores set positions.
 pub fn positions_are_real() -> bool {
     #[cfg(target_os = "linux")]
     return linux::is_x11();
@@ -436,8 +415,7 @@ pub fn positions_are_real() -> bool {
     true
 }
 
-/// Whether the primary button is still down. Where the platform cannot be asked, any pointer
-/// event after the press ends the drag.
+/// Unknown counts as released, so any pointer event after the press ends the drag.
 fn button_held() -> bool {
     platform::button_held() == Some(true)
 }
@@ -450,12 +428,8 @@ fn hidden_by_this_click(blurred_at: Option<Instant>, now: Instant) -> bool {
     blurred_at.is_some_and(|at| now.saturating_duration_since(at) < BLUR_GRACE)
 }
 
-/// The point whose monitor decides which work area the popover is clamped to.
-///
-/// It has to be where the popover is going, not where the pointer is. Resolving the monitor from
-/// the anchor clamps a position saved on one screen to the work area of another: opening from the
-/// tray menu, where the pointer is always on the panel's monitor, dragged the popover off the
-/// screen it had been left on (issue #42).
+/// #42: the monitor is picked from where the popover goes, not the pointer, which is always on
+/// the panel's monitor when opened from the tray menu.
 fn work_area_point(
     anchor: PhysicalPosition<f64>,
     custom: Option<PhysicalPosition<i32>>,
@@ -601,8 +575,7 @@ mod tests {
 
     #[test]
     fn placement_clears_a_top_panel() {
-        // A 40px top panel: the tray icon sits inside it, above the work area, so the popover has
-        // no room above the anchor and drops below it, stopping at the panel's edge.
+        // A 40px top panel holds the tray icon: no room above, so the popover drops below it.
         assert_eq!(
             placement(
                 PhysicalPosition::new(960.0, 20.0),
@@ -629,7 +602,7 @@ mod tests {
             ),
             (60, 272)
         );
-        // A 60px right panel: the popover ends flush with the work area at 1500 + 360 = 1860.
+        // A 60px right panel.
         assert_eq!(
             placement(
                 PhysicalPosition::new(1890.0, 540.0),
@@ -689,8 +662,7 @@ mod tests {
             placement(anchor, size, 360.0, None, area(1920, 30, 1280, 690)),
             (2840, 432)
         );
-        // The same anchor against the primary's work area lands nowhere near it, which is why the
-        // caller has to resolve the monitor before asking for a placement.
+        // Against the primary's work area it lands far away: the caller must resolve the monitor.
         assert_eq!(
             placement(anchor, size, 360.0, None, area(0, 0, 1920, 1040)).0,
             1560

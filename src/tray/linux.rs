@@ -1,5 +1,4 @@
-//! A StatusNotifierItem through ksni, with no GTK. Unlike libappindicator it is told about a left
-//! click, and where it happened (issue #97).
+//! StatusNotifierItem via ksni, no GTK: unlike libappindicator it gets left clicks and where (#97).
 use crate::popover::Popover;
 use ksni::{menu::StandardItem, Icon, MenuItem, OfflineReason, ToolTip, TrayMethods};
 use slint::winit_030::winit::dpi::PhysicalPosition;
@@ -46,8 +45,7 @@ impl ksni::Tray for Tray {
         let _ = slint::invoke_from_event_loop(move || popover.toggle(Some(anchor)));
     }
 
-    /// Keeps serving: ksni registers the icon once a watcher appears, as one does when the app
-    /// starts at login before the panel.
+    /// Keeps serving: ksni registers once a watcher appears, as at login before the panel starts.
     fn watcher_offline(&self, _reason: OfflineReason) -> bool {
         eprintln!(
             "trayci: no StatusNotifierWatcher on the session bus, so no tray icon until one \
@@ -79,8 +77,7 @@ impl ksni::Tray for Tray {
     }
 }
 
-/// Registers the tray icon and keeps its tooltip on the latest of `tooltips` for as long as the
-/// sender lives.
+/// Registers the tray icon; its tooltip follows `tooltips` while the sender lives.
 pub fn spawn(runtime: &Handle, popover: Popover, mut tooltips: watch::Receiver<String>) {
     let icons = match ICONS.into_iter().map(icon).collect() {
         Ok(icons) => icons,

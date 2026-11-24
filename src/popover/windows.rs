@@ -1,5 +1,4 @@
-//! Where Windows says the popover may go. winit makes the process per-monitor DPI aware, so these
-//! are physical pixels, the same space as the tray icon's rect.
+//! Physical pixels, like the tray icon's rect: winit makes the process per-monitor DPI aware.
 use super::Rect;
 use slint::winit_030::winit::dpi::{PhysicalPosition, PhysicalSize};
 use windows_sys::Win32::{
@@ -42,8 +41,7 @@ pub fn cursor_position() -> Option<PhysicalPosition<f64>> {
     (found != 0).then(|| PhysicalPosition::new(point.x.into(), point.y.into()))
 }
 
-/// Whether the primary button is down. GetAsyncKeyState reads the physical buttons, so with the
-/// buttons swapped the primary one is the right.
+/// GetAsyncKeyState reads physical buttons, so with the buttons swapped the primary is the right.
 pub fn button_held() -> Option<bool> {
     // SAFETY: plain Win32 calls.
     let primary = if unsafe { GetSystemMetrics(SM_SWAPBUTTON) } != 0 {

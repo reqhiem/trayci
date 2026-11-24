@@ -1,5 +1,4 @@
-// The header above both views (Figma PopoverHeader for usage, Topbar view=settings). Its
-// background is the drag handle.
+// The header above both views (Figma PopoverHeader, Topbar view=settings); it drags the window.
 import { Bridge, SettingsView } from "bridge.slint";
 import { Theme } from "theme.slint";
 import { IconButton, KeyFocus, TipBox } from "components/icon-button.slint";
@@ -10,9 +9,8 @@ export component Topbar inherits Rectangle {
     // Hands the keyboard focus back to the popover itself.
     callback focus-root;
 
-    // A view switch hides the focused element, and Slint delivers no key to a focus left on a
-    // hidden one: Escape would stop working. From the keyboard the focus goes to the other view's
-    // back or gear button, as in the React popover; from the pointer, to the popover itself.
+    // Slint sends no keys to a hidden focus, so a view switch would kill Escape. Keyboard switches
+    // move focus to the other view's back or gear button; pointer ones, to the popover.
     function switch-view(open: bool, from-keyboard: bool) {
         Bridge.settings-open = open;
         if !from-keyboard {
