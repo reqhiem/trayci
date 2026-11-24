@@ -1,0 +1,10 @@
+# The AppImage's AppRun runs this Exec with the AppImage's own arguments appended, so it names no
+# subcommand: `tray` here would turn the terminal view and every CLI call into a tray launch.
+[Desktop Entry]
+Categories=Utility;
+Comment=AI coding usage in your system tray
+Exec=trayci
+Icon=trayci
+Name=Trayci
+Terminal=false
+Type=Application

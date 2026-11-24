@@ -62,3 +62,54 @@ windows-sys = { version = "0.61", features = [
     "Win32_UI_WindowsAndMessaging",
 ] }
 winreg = "0.10"
+
+# `cargo packager --release --formats deb,appimage` (or `nsis`). It names bundles after the binary,
+# `trayci_*`; CI and the Makefile rename them to the `Trayci_*` that install.sh and install.ps1 fetch.
+[package.metadata.packager]
+productName = "Trayci"
+identifier = "com.trayci.Trayci"
+category = "Utility"
+description = "AI coding usage in your system tray"
+longDescription = "Shows how much of your Claude Code, Codex and Antigravity quota is left, from the system tray or the terminal."
+authors = ["Trayci contributors"]
+beforePackagingCommand = "cargo build --release"
+icons = [
+    "resources/icons/32x32.png",
+    "resources/icons/128x128.png",
+    "resources/icons/256x256.png",
+    "resources/icons/512x512.png",
+    "resources/icons/icon.ico",
+]
+
+[package.metadata.packager.deb]
+# install.sh asks `dpkg-query -W trayci`.
+packageName = "trayci"
+desktopTemplate = "resources/trayci.desktop"
+# Only fontconfig is linked; winit and femtovg dlopen the rest at startup.
+depends = [
+    "libfontconfig1",
+    "libxkbcommon0",
+    "libxkbcommon-x11-0",
+    "libx11-6",
+    "libx11-xcb1",
+    "libxcursor1",
+    "libxi6",
+    "libgl1",
+    "libegl1",
+    "libwayland-client0",
+    "libwayland-egl1",
+]
+
+[package.metadata.packager.appimage]
+files = { "resources/trayci-appimage.desktop" = "usr/share/applications/trayci.desktop" }
+
+[package.metadata.packager.nsis]
+# %LOCALAPPDATA%\Trayci\trayci.exe, which install.ps1 starts.
+installMode = "currentUser"
+# The template has no uninstall hook, but a section named `un.*` declared here joins the
+# uninstaller: it removes the Run value autostart.rs writes, as the Tauri installer did.
+preinstallSection = """
+Section un.RemoveAutostart
+  DeleteRegValue HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Run" "Trayci"
+SectionEnd
+"""
