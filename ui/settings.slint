@@ -131,62 +131,65 @@ component PositionRow inherits SettingRow {
     changed saved-y => { root.show-saved(); }
 
     RowLabel { text: root.real ? "Position" : "Position (Wayland ignores it)"; }
-    HorizontalLayout {
+    // Wraps the fields rather than covering the row: in a SettingRow every child is laid out.
+    hover := TouchArea {
         horizontal-stretch: 0;
-        spacing: 8px * Theme.scale;
+        enabled: !root.real;
         HorizontalLayout {
-            spacing: 4px * Theme.scale;
-            AxisLabel { text: "X"; }
-            x := NumberField {
-                label: "Position X";
-                enabled: root.real;
-                edited => { root.drafting = true; }
-                accepted => { root.commit(); }
-                changed has-focus => {
-                    if !self.has-focus {
-                        root.commit();
+            spacing: 8px * Theme.scale;
+            HorizontalLayout {
+                spacing: 4px * Theme.scale;
+                AxisLabel { text: "X"; }
+                x := NumberField {
+                    label: "Position X";
+                    enabled: root.real;
+                    edited => { root.drafting = true; }
+                    accepted => { root.commit(); }
+                    changed has-focus => {
+                        if !self.has-focus {
+                            root.commit();
+                        }
                     }
                 }
             }
-        }
-        HorizontalLayout {
-            spacing: 4px * Theme.scale;
-            AxisLabel { text: "Y"; }
-            y := NumberField {
-                label: "Position Y";
-                enabled: root.real;
-                edited => { root.drafting = true; }
-                accepted => { root.commit(); }
-                changed has-focus => {
-                    if !self.has-focus {
-                        root.commit();
+            HorizontalLayout {
+                spacing: 4px * Theme.scale;
+                AxisLabel { text: "Y"; }
+                y := NumberField {
+                    label: "Position Y";
+                    enabled: root.real;
+                    edited => { root.drafting = true; }
+                    accepted => { root.commit(); }
+                    changed has-focus => {
+                        if !self.has-focus {
+                            root.commit();
+                        }
                     }
                 }
             }
-        }
-        if root.real: RowButton {
-            text: "Reset";
-            clicked => {
-                root.drafting = false;
-                x.text = "";
-                y.text = "";
-                Bridge.reset-position();
+            if root.real: RowButton {
+                text: "Reset";
+                clicked => {
+                    root.drafting = false;
+                    x.text = "";
+                    y.text = "";
+                    Bridge.reset-position();
+                }
             }
         }
-    }
-    if !root.real: hover := TouchArea {
-        // Above the disabled fields, so the whole row explains itself.
         if hover.has-hover: Rectangle {
-            x: parent.width - self.width - 10px * Theme.scale;
-            y: -self.height - 2px;
+            x: parent.width - self.width;
+            y: -self.height - 4px;
+            width: self.preferred-width;
+            height: self.preferred-height;
             background: Theme.surface;
             border-width: 1px;
             border-color: Theme.line;
             border-radius: 5px * Theme.scale;
             HorizontalLayout {
-                padding-left: 8px * Theme.scale;
+                padding-left: 8px * Theme.scale + 1px;
                 padding-right: self.padding-left;
-                padding-top: 4px * Theme.scale;
+                padding-top: 4px * Theme.scale + 1px;
                 padding-bottom: self.padding-top;
                 Text {
                     text: "Wayland ignores a typed position";
