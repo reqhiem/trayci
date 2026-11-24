@@ -15,6 +15,13 @@ export struct MeterView {
     wide: bool,             // row label longer than 14 chars: takes the whole line
 }
 
+// One line of a detailed row: a meter on the left and one on the right, or one wide meter alone.
+export struct MeterLine {
+    left: MeterView,
+    right: MeterView,
+    has-right: bool,
+}
+
 export struct ProviderView {
     id: string,             // "claude" | "codex" | "antigravity"
     name: string,
@@ -25,6 +32,7 @@ export struct ProviderView {
     summary: string,        // "3h 54m" (a countdown) or "Updated 2h ago" (when stale)
     summary-stale: bool,
     meters: [MeterView],
+    lines: [MeterLine],     // the meters as a detailed row places them
     tightest: MeterView,
     has-tightest: bool,
     age: string,            // "Updated 1m ago"
