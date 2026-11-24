@@ -1,0 +1,27 @@
+import { Theme } from "../theme.slint";
+
+// 18px in a provider row, 16px in the detail pane (Figma ProviderIcon).
+export component ProviderIcon inherits Rectangle {
+    in property <string> provider;
+
+    width: 18px * Theme.scale;
+    height: self.width;
+    border-radius: self.width / 2;
+    border-width: 1px;
+    border-color: Theme.line;
+    background: Theme.tint-soft;
+    accessible-role: none;
+
+    Image {
+        // Codex's glyph is drawn on a 13px box, the others on 12px (Figma Glyph).
+        width: (root.provider == "codex" ? 13px : 12px) * Theme.scale;
+        height: self.width;
+        source: root.provider == "claude" ? @image-url("../icons/claude.svg")
+            : root.provider == "antigravity" ? @image-url("../icons/antigravity.svg")
+            : @image-url("../icons/codex.svg");
+        colorize: root.provider == "claude" ? Theme.claude
+            : root.provider == "antigravity" ? Theme.antigravity
+            : Theme.codex;
+        accessible-role: none;
+    }
+}
