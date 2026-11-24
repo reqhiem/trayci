@@ -69,6 +69,8 @@ struct State {
     /// Where the window sat when the header was pressed, for as long as the window manager moves
     /// it.
     drag_origin: Option<PhysicalPosition<i32>>,
+    /// The custom position when the drag began: `Moved` overwrites it as the window travels.
+    custom_before_drag: Option<PhysicalPosition<i32>>,
     blurred_at: Option<Instant>,
     /// Whether the popover has had focus since it was shown: X11 reports a focus-out as the
     /// window maps, before the focus-in, and only a later one means the user clicked away.
@@ -79,6 +81,11 @@ struct State {
 }
 
 impl State {
+    fn begin_drag(&mut self, origin: PhysicalPosition<i32>) {
+        self.drag_origin = Some(origin);
+        self.custom_before_drag = self.custom;
+    }
+
     fn finish_drag(
         &mut self,
         origin: PhysicalPosition<i32>,
@@ -89,6 +96,7 @@ impl State {
             // A press on the header that moved nothing is a click, not a drag: storing where the
             // popover already sat would pin it there and stop it following the tray icon. A drag
             // that came back to its origin left a `Moved` spot behind that is no longer true.
+            self.custom = self.custom_before_drag;
             self.pending = None;
         } else if positions_real {
             self.custom = Some(landed);
@@ -266,7 +274,8 @@ impl Popover {
             return;
         };
         let origin = ui.window().position();
-        self.state().drag_origin = Some(PhysicalPosition::new(origin.x, origin.y));
+        self.state()
+            .begin_drag(PhysicalPosition::new(origin.x, origin.y));
         let dragging = ui
             .window()
             .with_winit_window(|window| window.drag_window().is_ok());
@@ -510,15 +519,24 @@ mod tests {
     #[test]
     fn a_drag_back_to_its_origin_stores_nothing() {
         let origin = PhysicalPosition::new(720, 180);
-        let mut state = State {
-            pending: Some(PhysicalPosition::new(900, 400)),
-            ..Default::default()
-        };
-        state.finish_drag(origin, origin, true);
-        assert_eq!(
-            state.pending, None,
-            "the spot it passed through is not saved"
-        );
+        let passed = PhysicalPosition::new(900, 400);
+        let mut state = State::default();
+        for before in [None, Some(PhysicalPosition::new(1200, 300))] {
+            state.custom = before;
+            state.begin_drag(origin);
+            // What `Moved` records while the window travels.
+            state.custom = Some(passed);
+            state.pending = Some(passed);
+            state.finish_drag(origin, origin, true);
+            assert_eq!(
+                state.pending, None,
+                "the spot it passed through is not saved"
+            );
+            assert_eq!(
+                state.custom, before,
+                "nor kept for this session: the popover follows what it did before the drag"
+            );
+        }
 
         state.finish_drag(origin, PhysicalPosition::new(920, 380), true);
         assert_eq!(state.pending, Some(PhysicalPosition::new(920, 380)));
