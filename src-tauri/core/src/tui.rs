@@ -3,10 +3,14 @@
 //! Read-only: it never writes `cache.json` or the settings.
 
 use crate::{
-    cli::{countdown, format_minutes, format_reset, now_ms},
+    cli::now_ms,
     model::*,
-    providers::{abort_all_children, antigravity::pool_name},
-    service::{empty_snapshot, enabled_provider_ids, failed_snapshot, STALE_AFTER_MS},
+    presentation::{
+        countdown, display_percent, format_age, format_reset, is_stale, ordered, row_label,
+        severity, tightest, Severity,
+    },
+    providers::abort_all_children,
+    service::{empty_snapshot, enabled_provider_ids, failed_snapshot},
     CacheRepository, UsageProvider,
 };
 use crossterm::{
@@ -33,104 +37,13 @@ const FOOTER: &str = "q quit  r refresh  c view  u used/left";
 const BAR_MAX: usize = 20;
 const COMPACT_BAR: usize = 8;
 
-/// The row cadence: `5h`, `wk`, or the window's own label. Grouped (pool) windows read their
-/// length; ungrouped ones their label, because Claude's `Fable` window is weekly too.
-pub fn cadence(window: &UsageWindow) -> String {
-    let grouped = window.group.as_ref();
-    let duration = grouped.and(window.duration_minutes);
-    if window.label == "5h" || duration == Some(300) {
-        "5h".into()
-    } else if window.label.eq_ignore_ascii_case("weekly") || duration == Some(10_080) {
-        "wk".into()
-    } else if let Some(group) = grouped {
-        let pool = pool_name(&group.name);
-        window
-            .label
-            .strip_prefix(pool.as_str())
-            .unwrap_or(&window.label)
-            .trim()
-            .into()
-    } else {
-        window.label.clone()
-    }
-}
-
-/// `<pool> <cadence>` for a pool's window (`Gemini 5h`, `Gemini 4 Argon wk`), else the cadence.
-pub fn row_label(window: &UsageWindow) -> String {
-    let cadence = cadence(window);
-    match &window.group {
-        Some(group) if cadence.is_empty() => pool_name(&group.name),
-        Some(group) => format!("{} {cadence}", pool_name(&group.name)),
-        None => cadence,
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Severity {
-    Neutral,
-    Amber,
-    Orange,
-    Red,
-}
-
-/// #66's meter colors, on the notification thresholds (50/85/90). Always from *used*.
-pub fn severity(used: f64) -> Severity {
-    match used {
-        used if used >= 90.0 => Severity::Red,
-        used if used >= 85.0 => Severity::Orange,
-        used if used >= 50.0 => Severity::Amber,
-        _ => Severity::Neutral,
-    }
-}
-
-pub fn format_age(updated_at: u64, now: u64) -> String {
-    match now.saturating_sub(updated_at) / 60_000 {
-        0 => "Updated just now".into(),
-        minutes => format!("Updated {} ago", format_minutes(minutes)),
-    }
-}
-
 fn percent(used: f64, remaining: bool) -> String {
-    format!("{:.0}%", if remaining { 100.0 - used } else { used })
-}
-
-fn tightest(snapshot: &ProviderUsageSnapshot) -> Option<&UsageWindow> {
-    snapshot.windows.iter().reduce(|tightest, window| {
-        if window.used_percent > tightest.used_percent {
-            window
-        } else {
-            tightest
-        }
-    })
-}
-
-/// Status records age only as of loading, so a reading that aged while the view stayed open
-/// counts as stale too.
-fn is_stale(snapshot: &ProviderUsageSnapshot, now: u64) -> bool {
-    snapshot.status == UsageStatus::Stale
-        || now.saturating_sub(snapshot.updated_at) > STALE_AFTER_MS
-}
-
-/// The user's `providerOrder`, then the most used first, as the popover sorts.
-pub fn ordered<'a>(
-    snapshots: impl IntoIterator<Item = &'a ProviderUsageSnapshot>,
-    order: &[String],
-) -> Vec<&'a ProviderUsageSnapshot> {
-    let rank = |id: &str| order.iter().position(|o| o == id).unwrap_or(order.len());
-    let most = |snapshot: &ProviderUsageSnapshot| {
-        snapshot
-            .windows
-            .iter()
-            .map(|window| window.used_percent)
-            .fold(0.0, f64::max)
+    let mode = if remaining {
+        PercentageDisplay::Remaining
+    } else {
+        PercentageDisplay::Used
     };
-    let mut sorted = snapshots.into_iter().collect::<Vec<_>>();
-    sorted.sort_by(|a, b| {
-        rank(&a.provider)
-            .cmp(&rank(&b.provider))
-            .then(most(b).total_cmp(&most(a)))
-    });
-    sorted
+    format!("{}%", display_percent(used, mode))
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -187,7 +100,7 @@ fn bar(used: f64, width: usize) -> Line {
 }
 
 fn number(used: f64, remaining: bool, width: usize) -> (String, Tone) {
-    let tone = if severity(used) == Severity::Red {
+    let tone = if severity(used) == Severity::Critical {
         Tone::Critical
     } else {
         Tone::Plain
@@ -389,11 +302,11 @@ fn draw(lines: &[Line]) -> io::Result<()> {
                 Tone::Plain => text.stylize(),
                 Tone::Bold => text.bold(),
                 Tone::Muted | Tone::Track => text.dark_grey(),
-                Tone::Warning | Tone::Meter(Severity::Amber) => text.yellow(),
+                Tone::Warning | Tone::Meter(Severity::Medium) => text.yellow(),
                 Tone::Critical => text.red().bold(),
-                Tone::Meter(Severity::Neutral) => text.grey(),
-                Tone::Meter(Severity::Orange) => text.with(Color::AnsiValue(208)),
-                Tone::Meter(Severity::Red) => text.red(),
+                Tone::Meter(Severity::Low) => text.grey(),
+                Tone::Meter(Severity::High) => text.with(Color::AnsiValue(208)),
+                Tone::Meter(Severity::Critical) => text.red(),
             };
             queue!(out, PrintStyledContent(styled))?;
         }
@@ -632,75 +545,10 @@ mod tests {
     }
 
     #[test]
-    fn row_labels_follow_the_vocabulary_table() {
-        let labels = |snapshot: ProviderUsageSnapshot| {
-            snapshot.windows.iter().map(row_label).collect::<Vec<_>>()
-        };
-        assert_eq!(labels(claude()), ["5h", "wk", "Fable"]);
-        assert_eq!(
-            labels(antigravity()),
-            [
-                "Gemini 5h",
-                "Gemini wk",
-                "Claude/GPT 5h",
-                "Claude/GPT wk",
-                "Gemini 4 Argon wk"
-            ]
-        );
-        let daily = window("x", "Gemini Daily", 1440, Some("Gemini Models"));
-        assert_eq!(row_label(&daily), "Gemini Daily");
-    }
-
-    #[test]
-    fn countdown_and_age_read_at_a_glance() {
-        assert_eq!(countdown(NOW + 45 * MINUTE, NOW), "45m");
-        assert_eq!(countdown(NOW + 234 * MINUTE, NOW), "3h 54m");
-        assert_eq!(countdown(NOW + (5 * 1440 + 60) * MINUTE, NOW), "5d 1h");
-        assert_eq!(countdown(NOW + 30_000, NOW), "now");
-        assert_eq!(countdown(NOW - MINUTE, NOW), "now");
-        assert_eq!(
-            format_reset(Some(NOW + 234 * MINUTE), NOW),
-            "resets in 3h 54m"
-        );
-        assert_eq!(format_age(NOW - 2 * MINUTE, NOW), "Updated 2m ago");
-        assert_eq!(format_age(NOW - 10_000, NOW), "Updated just now");
-    }
-
-    #[test]
-    fn severity_follows_the_notification_thresholds() {
-        assert_eq!(severity(49.9), Severity::Neutral);
-        assert_eq!(severity(50.0), Severity::Amber);
-        assert_eq!(severity(84.9), Severity::Amber);
-        assert_eq!(severity(85.0), Severity::Orange);
-        assert_eq!(severity(89.9), Severity::Orange);
-        assert_eq!(severity(90.0), Severity::Red);
-    }
-
-    #[test]
     fn the_meter_shows_used_even_when_the_number_shows_remaining() {
         assert_eq!(percent(92.0, true), "8%");
         assert_eq!(number(92.0, true, 4), ("  8%".to_string(), Tone::Critical));
-        assert_eq!(bar(92.0, 10)[0].1, Tone::Meter(Severity::Red));
-    }
-
-    #[test]
-    fn providers_follow_the_user_order_then_usage() {
-        let mut codex = snapshot("codex", vec![window("weekly", "Weekly", 10_080, None)]);
-        codex.windows[0].used_percent = 99.0;
-        let (claude, antigravity) = (claude(), antigravity());
-        let all = [&codex, &claude, &antigravity];
-        let order = ["antigravity".to_string(), "claude".to_string()];
-        let ids = |sorted: Vec<&ProviderUsageSnapshot>| {
-            sorted
-                .iter()
-                .map(|snapshot| snapshot.provider.clone())
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(
-            ids(ordered(all, &order)),
-            ["antigravity", "claude", "codex"]
-        );
-        assert_eq!(ids(ordered(all, &[]))[0], "codex");
+        assert_eq!(bar(92.0, 10)[0].1, Tone::Meter(Severity::Critical));
     }
 
     #[test]

@@ -2,6 +2,7 @@ pub mod cache;
 pub mod cli;
 pub mod model;
 pub mod notify;
+pub mod presentation;
 pub mod providers;
 pub mod service;
 pub mod settings;

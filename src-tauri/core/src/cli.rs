@@ -1,4 +1,4 @@
-use crate::{model::*, service::UsageProvider};
+use crate::{model::*, presentation::format_reset, service::UsageProvider};
 
 pub fn cli_arguments<I, S>(arguments: I) -> Vec<String>
 where
@@ -115,31 +115,6 @@ pub async fn run_cli(
             .join("\n\n")
     };
     (i32::from(!ok), format!("{output}\n"))
-}
-
-pub fn format_reset(resets_at: Option<u64>, now: u64) -> String {
-    match resets_at.map(|resets_at| countdown(resets_at, now)) {
-        None => String::new(),
-        Some(left) if left == "now" => "resets now".into(),
-        Some(left) => format!("resets in {left}"),
-    }
-}
-
-/// Time until `resets_at` at a glance: `45m`, `3h 54m`, `5d 1h`, or `now`.
-pub fn countdown(resets_at: u64, now: u64) -> String {
-    match resets_at.saturating_sub(now) / 60_000 {
-        0 => "now".into(),
-        minutes => format_minutes(minutes),
-    }
-}
-
-/// Minutes as the coarsest unit that still reads at a glance: `45m`, `3h 54m`, `5d 1h`.
-pub fn format_minutes(minutes: u64) -> String {
-    match minutes {
-        0..=59 => format!("{minutes}m"),
-        60..=1439 => format!("{}h {}m", minutes / 60, minutes % 60),
-        _ => format!("{}d {}h", minutes / 1440, minutes % 1440 / 60),
-    }
 }
 
 fn human(snapshot: &ProviderUsageSnapshot, now: u64) -> String {
