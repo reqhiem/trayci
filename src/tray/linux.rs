@@ -1,15 +1,21 @@
 //! A StatusNotifierItem through ksni, with no GTK. Unlike libappindicator it is told about a left
 //! click, and where it happened (issue #97).
 use crate::popover::Popover;
-use ksni::{menu::StandardItem, Icon, MenuItem, ToolTip, TrayMethods};
+use ksni::{menu::StandardItem, Icon, MenuItem, OfflineReason, ToolTip, TrayMethods};
 use slint::winit_030::winit::dpi::PhysicalPosition;
 use tokio::{runtime::Handle, sync::watch};
 
-const ICON: &[u8] = include_bytes!("../../resources/icons/32x32.png");
+/// Every size a panel is likely to draw, so the host scales none of them.
+const ICONS: [&[u8]; 4] = [
+    include_bytes!("../../resources/icons/16x16.png"),
+    include_bytes!("../../resources/icons/32x32.png"),
+    include_bytes!("../../resources/icons/48x48.png"),
+    include_bytes!("../../resources/icons/64x64.png"),
+];
 
 struct Tray {
     popover: Popover,
-    icon: Icon,
+    icons: Vec<Icon>,
     tooltip: String,
 }
 
@@ -23,7 +29,7 @@ impl ksni::Tray for Tray {
     }
 
     fn icon_pixmap(&self) -> Vec<Icon> {
-        vec![self.icon.clone()]
+        self.icons.clone()
     }
 
     fn tool_tip(&self) -> ToolTip {
@@ -33,10 +39,21 @@ impl ksni::Tray for Tray {
         }
     }
 
+    /// `x` and `y` are where the click happened, in screen pixels: X11 has no other kind.
     fn activate(&mut self, x: i32, y: i32) {
         let popover = self.popover.clone();
         let anchor = PhysicalPosition::new(x.into(), y.into());
-        let _ = slint::invoke_from_event_loop(move || popover.toggle(anchor));
+        let _ = slint::invoke_from_event_loop(move || popover.toggle(Some(anchor)));
+    }
+
+    /// Keeps serving: ksni registers the icon once a watcher appears, as one does when the app
+    /// starts at login before the panel.
+    fn watcher_offline(&self, _reason: OfflineReason) -> bool {
+        eprintln!(
+            "trayci: no StatusNotifierWatcher on the session bus, so no tray icon until one \
+             starts; Ctrl+Alt+U or running `trayci tray` again opens the popover"
+        );
+        true
     }
 
     fn menu(&self) -> Vec<MenuItem<Self>> {
@@ -65,8 +82,8 @@ impl ksni::Tray for Tray {
 /// Registers the tray icon and keeps its tooltip on the latest of `tooltips` for as long as the
 /// sender lives.
 pub fn spawn(runtime: &Handle, popover: Popover, mut tooltips: watch::Receiver<String>) {
-    let icon = match icon() {
-        Ok(icon) => icon,
+    let icons = match ICONS.into_iter().map(icon).collect() {
+        Ok(icons) => icons,
         Err(error) => {
             eprintln!("trayci: unreadable tray icon: {error}");
             return;
@@ -76,10 +93,10 @@ pub fn spawn(runtime: &Handle, popover: Popover, mut tooltips: watch::Receiver<S
         let tooltip = tooltips.borrow_and_update().clone();
         let tray = Tray {
             popover,
-            icon,
+            icons,
             tooltip,
         };
-        let handle = match tray.spawn().await {
+        let handle = match tray.assume_sni_available(true).spawn().await {
             Ok(handle) => handle,
             Err(error) => {
                 eprintln!("trayci: no tray icon: {error}");
@@ -94,8 +111,8 @@ pub fn spawn(runtime: &Handle, popover: Popover, mut tooltips: watch::Receiver<S
 }
 
 /// The PNG as StatusNotifierItem wants it: ARGB32 in network byte order.
-fn icon() -> Result<Icon, png::DecodingError> {
-    let mut reader = png::Decoder::new(std::io::Cursor::new(ICON)).read_info()?;
+fn icon(png: &[u8]) -> Result<Icon, png::DecodingError> {
+    let mut reader = png::Decoder::new(std::io::Cursor::new(png)).read_info()?;
     let mut data = vec![0; reader.output_buffer_size().unwrap_or_default()];
     let frame = reader.next_frame(&mut data)?;
     if frame.color_type != png::ColorType::Rgba || frame.bit_depth != png::BitDepth::Eight {
@@ -117,9 +134,11 @@ fn icon() -> Result<Icon, png::DecodingError> {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn the_icon_decodes_to_argb() {
-        let icon = super::icon().expect("bundled icon decodes");
-        assert_eq!((icon.width, icon.height), (32, 32));
-        assert_eq!(icon.data.len(), 32 * 32 * 4);
+    fn every_icon_decodes_to_argb() {
+        for (png, size) in super::ICONS.into_iter().zip([16, 32, 48, 64]) {
+            let icon = super::icon(png).expect("bundled icon decodes");
+            assert_eq!((icon.width, icon.height), (size, size));
+            assert_eq!(icon.data.len(), (size * size * 4) as usize);
+        }
     }
 }

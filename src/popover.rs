@@ -4,6 +4,7 @@ use slint::{
         winit::{
             dpi::{PhysicalPosition, PhysicalSize},
             event::WindowEvent,
+            window::WindowAttributes,
         },
         EventResult, WinitWindowAccessor,
     },
@@ -18,6 +19,8 @@ use std::{
 mod linux;
 #[cfg(target_os = "linux")]
 use linux as platform;
+#[cfg(target_os = "linux")]
+pub use linux::is_x11;
 #[cfg(windows)]
 mod windows;
 #[cfg(windows)]
@@ -38,7 +41,22 @@ impl Rect {
         (left..left + f64::from(self.size.width)).contains(&x)
             && (top..top + f64::from(self.size.height)).contains(&y)
     }
+
+    fn intersection(&self, other: Rect) -> Option<Rect> {
+        let left = self.position.x.max(other.position.x);
+        let top = self.position.y.max(other.position.y);
+        let right = (self.position.x + self.size.width as i32)
+            .min(other.position.x + other.size.width as i32);
+        let bottom = (self.position.y + self.size.height as i32)
+            .min(other.position.y + other.size.height as i32);
+        (right > left && bottom > top).then(|| Rect {
+            position: PhysicalPosition::new(left, top),
+            size: PhysicalSize::new((right - left) as u32, (bottom - top) as u32),
+        })
+    }
 }
+
+type Save = Arc<dyn Fn((i32, i32)) + Send + Sync>;
 
 #[derive(Default)]
 struct State {
@@ -46,10 +64,18 @@ struct State {
     anchor: Option<PhysicalPosition<f64>>,
     /// Where the user put the popover; sticky across sessions.
     custom: Option<PhysicalPosition<i32>>,
+    /// A dragged position not yet written to settings.
+    pending: Option<PhysicalPosition<i32>>,
+    /// Where the window sat when the header was pressed, for as long as the window manager moves
+    /// it.
+    drag_origin: Option<PhysicalPosition<i32>>,
     blurred_at: Option<Instant>,
     /// Whether the popover has had focus since it was shown: X11 reports a focus-out as the
     /// window maps, before the focus-in, and only a later one means the user clicked away.
     focused: bool,
+    /// Shown and not yet mapped: winit reports the map as the window's first focus event.
+    mapping: bool,
+    save: Option<Save>,
 }
 
 /// The popover window's placement and visibility. Cheap to clone and to send to another thread,
@@ -69,31 +95,75 @@ impl Popover {
         popover.state().custom = custom.map(|(x, y)| PhysicalPosition::new(x, y));
         let events = popover.clone();
         ui.window().on_winit_window_event(move |_, event| {
-            // Deferred: hiding or moving the window from inside its own event dispatch re-enters
-            // the backend.
-            let popover = events.clone();
-            match event {
-                WindowEvent::Focused(true) => popover.state().focused = true,
-                WindowEvent::Focused(false) if std::mem::take(&mut popover.state().focused) => {
-                    slint::Timer::single_shot(Duration::ZERO, move || popover.blurred());
-                }
-                // The window follows its content's size, and growing taller from the tray icon
-                // would run off a bottom panel's monitor.
-                WindowEvent::Resized(_) => {
-                    slint::Timer::single_shot(Duration::ZERO, move || popover.position());
-                }
-                _ => {}
-            }
+            events.handle(event);
             EventResult::Propagate
         });
         popover
+    }
+
+    /// Writes a dragged position to settings. The popover calls it once a drag ends and as it
+    /// hides, never while it moves.
+    pub fn on_save(&self, save: impl Fn((i32, i32)) + Send + Sync + 'static) {
+        self.state().save = Some(Arc::new(save));
     }
 
     fn state(&self) -> std::sync::MutexGuard<'_, State> {
         self.state.lock().expect("popover state lock")
     }
 
-    pub fn toggle(&self, anchor: PhysicalPosition<f64>) {
+    fn handle(&self, event: &WindowEvent) {
+        // Deferred: hiding or moving the window from inside its own event dispatch re-enters the
+        // backend.
+        let later = |action: fn(&Popover)| {
+            let popover = self.clone();
+            slint::Timer::single_shot(Duration::ZERO, move || action(&popover));
+        };
+        let mut state = self.state();
+        if let Some(origin) = state.drag_origin {
+            match event {
+                WindowEvent::Moved(position) if *position != origin && positions_are_real() => {
+                    state.custom = Some(*position);
+                    state.pending = Some(*position);
+                }
+                // The window manager holds the pointer while it moves the window, so the release
+                // never arrives: the drag is over at the first event that comes with the button
+                // already up.
+                WindowEvent::CursorMoved { .. }
+                | WindowEvent::CursorEntered { .. }
+                | WindowEvent::CursorLeft { .. }
+                | WindowEvent::MouseInput { .. }
+                | WindowEvent::Focused(_)
+                    if !button_held() =>
+                {
+                    state.drag_origin = None;
+                    let popover = self.clone();
+                    slint::Timer::single_shot(Duration::ZERO, move || popover.end_drag(origin));
+                }
+                _ => {}
+            }
+        }
+        match event {
+            WindowEvent::Focused(_) if std::mem::take(&mut state.mapping) => {
+                state.focused = matches!(event, WindowEvent::Focused(true));
+                later(Popover::present);
+            }
+            WindowEvent::Focused(true) => state.focused = true,
+            // A window manager that grabs the pointer for a move takes focus with it, so a
+            // focus-out during a drag is not the user clicking away.
+            WindowEvent::Focused(false)
+                if state.drag_origin.is_none() && std::mem::take(&mut state.focused) =>
+            {
+                later(Popover::blurred);
+            }
+            // The window follows its content's size, and growing taller from the tray icon would
+            // run off a bottom panel's monitor.
+            WindowEvent::Resized(_) => later(Popover::position),
+            _ => {}
+        }
+    }
+
+    /// Toggles the popover at `anchor`, or at the pointer when there is none.
+    pub fn toggle(&self, anchor: Option<PhysicalPosition<f64>>) {
         let Some(ui) = self.ui.upgrade() else {
             return;
         };
@@ -104,7 +174,7 @@ impl Popover {
         if hidden_by_this_click(blurred_at, Instant::now()) {
             return;
         }
-        self.show(Some(anchor));
+        self.show(anchor);
     }
 
     /// Opens at `anchor`, or at the pointer when there is none.
@@ -112,8 +182,16 @@ impl Popover {
         let Some(ui) = self.ui.upgrade() else {
             return;
         };
-        if let Some(anchor) = anchor.or_else(platform::cursor_position) {
-            self.state().anchor = Some(anchor);
+        let visible = ui.window().is_visible();
+        {
+            let mut state = self.state();
+            // A drag whose end never arrived would otherwise leave the popover unclosable for the
+            // rest of the session.
+            state.drag_origin = None;
+            if let Some(anchor) = anchor.or_else(platform::cursor_position) {
+                state.anchor = Some(anchor);
+            }
+            state.mapping = !visible;
         }
         self.position();
         if let Err(error) = ui.window().show() {
@@ -122,18 +200,38 @@ impl Popover {
         }
         // A window that was never mapped has no winit window to measure until now.
         self.position();
-        ui.window()
-            .with_winit_window(|window| window.focus_window());
+        // Already mapped, so no map event will ask for focus.
+        if visible {
+            self.present();
+        }
+    }
+
+    fn present(&self) {
+        let Some(ui) = self.ui.upgrade() else {
+            return;
+        };
+        ui.window().with_winit_window(|window| {
+            #[cfg(target_os = "linux")]
+            if linux::present(window).is_some() {
+                return;
+            }
+            window.focus_window();
+        });
     }
 
     pub fn hide(&self) {
         let Some(ui) = self.ui.upgrade() else {
             return;
         };
-        self.state().focused = false;
+        {
+            let mut state = self.state();
+            state.focused = false;
+            state.mapping = false;
+        }
         if let Err(error) = ui.window().hide() {
             eprintln!("trayci: could not hide the popover: {error}");
         }
+        self.save_pending();
         ui.global::<Bridge>().invoke_reset_transient();
     }
 
@@ -142,18 +240,83 @@ impl Popover {
         self.hide();
     }
 
+    /// Hands the header drag to the window manager (issue #37). Only a move that follows counts
+    /// as the user's.
+    pub fn begin_drag(&self) {
+        let Some(ui) = self.ui.upgrade() else {
+            return;
+        };
+        let origin = ui.window().position();
+        self.state().drag_origin = Some(PhysicalPosition::new(origin.x, origin.y));
+        let dragging = ui
+            .window()
+            .with_winit_window(|window| window.drag_window().is_ok());
+        if dragging != Some(true) {
+            self.state().drag_origin = None;
+        }
+    }
+
+    /// Keeps where the popover came to rest, read from the window rather than the pointer: a
+    /// window manager stops a window at the edge of the work area while the pointer travels on,
+    /// and the pointer's target would be a position the popover was never at.
+    fn end_drag(&self, origin: PhysicalPosition<i32>) {
+        let Some(ui) = self.ui.upgrade() else {
+            return;
+        };
+        // Slint saw the press but not the release, so the header would still hold the pointer
+        // and take the next click as another drag. Released off the window, nothing is clicked.
+        ui.window()
+            .dispatch_event(slint::platform::WindowEvent::PointerReleased {
+                position: slint::LogicalPosition::new(-1.0, -1.0),
+                button: slint::platform::PointerEventButton::Left,
+            });
+        let landed = ui.window().position();
+        let landed = PhysicalPosition::new(landed.x, landed.y);
+        // A press on the header that moved nothing is a click, not a drag: storing where the
+        // popover already sat would pin it there and stop it following the tray icon.
+        if landed != origin && positions_are_real() {
+            let mut state = self.state();
+            state.custom = Some(landed);
+            state.pending = Some(landed);
+        }
+        self.save_pending();
+    }
+
+    pub fn take_pending(&self) -> Option<(i32, i32)> {
+        self.state()
+            .pending
+            .take()
+            .map(|position| (position.x, position.y))
+    }
+
+    fn save_pending(&self) {
+        let save = self.state().save.clone();
+        if let (Some(save), Some(position)) = (save, self.take_pending()) {
+            save(position);
+        }
+    }
+
     /// Places the popover at a typed position, the manual counterpart of a drag (issue #39).
     ///
     /// The stored value is what was typed; `placement` clamps it to the work area on every use,
     /// the same way it does for a dragged one.
     pub fn place(&self, position: (i32, i32)) {
-        self.state().custom = Some(PhysicalPosition::new(position.0, position.1));
+        {
+            let mut state = self.state();
+            state.custom = Some(PhysicalPosition::new(position.0, position.1));
+            state.pending = None;
+        }
         self.position();
     }
 
     /// Drops a saved position and snaps the popover back to the tray.
     pub fn reanchor(&self) {
-        self.state().custom = None;
+        {
+            let mut state = self.state();
+            state.custom = None;
+            state.pending = None;
+            state.drag_origin = None;
+        }
         self.position();
     }
 
@@ -164,6 +327,11 @@ impl Popover {
         let window = ui.window();
         let (anchor, custom) = {
             let state = self.state();
+            // Usage arriving mid-drag resizes the content, and re-placing the window then would
+            // snap it out from under the pointer.
+            if state.drag_origin.is_some() {
+                return;
+            }
             (state.anchor, state.custom)
         };
         // Nothing to place against yet: leave it where the window manager puts it.
@@ -172,7 +340,14 @@ impl Popover {
             return;
         };
         let point = work_area_point(anchor, custom);
-        let Some(area) = platform::work_area(point).or_else(|| monitor_bounds(&ui, point)) else {
+        let work = platform::work_area(point);
+        let Some(area) = monitor_bounds(&ui, point)
+            .map(|monitor| {
+                work.and_then(|work| work.intersection(monitor))
+                    .unwrap_or(monitor)
+            })
+            .or(work)
+        else {
             return;
         };
         let size = window.size();
@@ -192,7 +367,7 @@ impl Popover {
     }
 }
 
-/// The bounds of the monitor holding `point`, for a platform that cannot name its work area.
+/// The bounds of the monitor holding `point`.
 fn monitor_bounds(ui: &ui::Popover, point: (f64, f64)) -> Option<Rect> {
     ui.window()
         .with_winit_window(|window| {
@@ -209,12 +384,34 @@ fn monitor_bounds(ui: &ui::Popover, point: (f64, f64)) -> Option<Rect> {
         .flatten()
 }
 
+/// How the popover window is created: a utility window, which muffin keeps out of the taskbar and
+/// alt-tab from its first map.
+pub fn window_attributes(attributes: WindowAttributes) -> WindowAttributes {
+    #[cfg(target_os = "linux")]
+    {
+        use slint::winit_030::winit::platform::x11::{WindowAttributesExtX11, WindowType};
+        attributes.with_x11_window_type(vec![WindowType::Utility])
+    }
+    #[cfg(not(target_os = "linux"))]
+    attributes
+}
+
 /// Whether a position the user sets survives. A Wayland compositor places toplevels itself, so
 /// there the coordinates would be written to settings and never applied.
 pub fn positions_are_real() -> bool {
-    !cfg!(target_os = "linux")
-        || std::env::var_os("WAYLAND_DISPLAY").is_none()
-        || std::env::var("SLINT_BACKEND").is_ok_and(|backend| backend.ends_with("x11"))
+    #[cfg(target_os = "linux")]
+    return linux::is_x11();
+    #[cfg(not(target_os = "linux"))]
+    true
+}
+
+/// Whether the primary button is still down. Where the server cannot be asked, any pointer event
+/// after the press ends the drag.
+fn button_held() -> bool {
+    #[cfg(target_os = "linux")]
+    return linux::button_held() == Some(true);
+    #[cfg(not(target_os = "linux"))]
+    false
 }
 
 /// On Windows, a tray press blurs (and so hides) the popover before the click reaches `toggle`.
@@ -292,6 +489,22 @@ mod tests {
         assert!(hidden_by_this_click(Some(now), now + BLUR_GRACE / 2));
         assert!(!hidden_by_this_click(Some(now), now + BLUR_GRACE));
         assert!(!hidden_by_this_click(None, now));
+    }
+
+    #[test]
+    fn the_work_area_is_the_monitor_minus_the_panels() {
+        // `_NET_WORKAREA` spans both monitors: 1920x1080 at 0,0 and 1280x1024 to its right, less
+        // a 40px bottom panel on the first.
+        let work = area(0, 0, 3200, 1040);
+        assert_eq!(
+            work.intersection(area(0, 0, 1920, 1080)),
+            Some(area(0, 0, 1920, 1040))
+        );
+        assert_eq!(
+            work.intersection(area(1920, 0, 1280, 1024)),
+            Some(area(1920, 0, 1280, 1024))
+        );
+        assert_eq!(work.intersection(area(-1920, 0, 1920, 1080)), None);
     }
 
     #[test]
