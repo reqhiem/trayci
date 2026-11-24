@@ -1,0 +1,74 @@
+import { Theme } from "../theme.slint";
+
+// Tooltip content in the popover's colours: the built-in text tooltip follows the std-widgets
+// Palette, which ignores Theme.
+export component TipBox inherits Rectangle {
+    in property <string> text;
+
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.line;
+    border-radius: 5px * Theme.scale;
+
+    HorizontalLayout {
+        padding-left: 7px * Theme.scale;
+        padding-right: 7px * Theme.scale;
+        padding-top: 4px * Theme.scale;
+        padding-bottom: 4px * Theme.scale;
+        Text {
+            text: root.text;
+            color: Theme.paper;
+            font-size: 11px * Theme.scale;
+        }
+    }
+}
+
+// A header button: a 20×24 icon drawn muted, paper while hovered or pressed.
+export component IconButton inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    in property <string> tip;
+    in property <bool> pressed;
+    in property <bool> enabled: true;
+    in property <bool> spinning;
+    callback clicked;
+
+    width: 20px * Theme.scale;
+    height: 24px * Theme.scale;
+    border-radius: 5px * Theme.scale;
+    background: root.pressed || (touch.has-hover && root.enabled) ? Theme.tint : transparent;
+    opacity: root.enabled ? 1 : 0.55;
+
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-enabled: root.enabled;
+    accessible-action-default => {
+        if root.enabled {
+            root.clicked();
+        }
+    }
+
+    Image {
+        width: parent.width;
+        height: parent.height;
+        source: root.icon;
+        colorize: root.pressed || (touch.has-hover && root.enabled) ? Theme.paper : Theme.muted;
+        // The refresh glyph's own centre, so it turns in place.
+        transform-origin: { x: self.width * 0.515, y: self.height * 0.536 };
+        transform-rotation: root.spinning ? animation-tick() / 0.8s * 360deg : 0deg;
+        accessible-role: none;
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    if root.tip != "" : Tooltip {
+        TipBox {
+            text: root.tip;
+        }
+    }
+}
