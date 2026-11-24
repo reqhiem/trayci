@@ -1,8 +1,7 @@
 .misc/
 node_modules/
 dist/
-/src-tauri/gen/
-/src-tauri/target/
+/target/
 *.log
 .claude/worktrees/
 .astro/

@@ -1,8 +1,0 @@
-.agents/
-.claude/
-pnpm-lock.yaml
-site/dist/
-site/.astro/
-site/video/
-# Captured CLI output: the parsers read it line by line, so it must stay as captured.
-src-tauri/core/tests/fixtures/
