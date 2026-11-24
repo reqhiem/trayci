@@ -197,13 +197,18 @@ component ProviderRow inherits Rectangle {
     KeyFocus {
         name: "row:" + root.provider.id;
         // Rebuilt with every providers model: the new row takes the keyboard back.
+        // Not while settings show: a click there leaves the token behind, and the hidden row would
+        // take the keyboard from the settings control.
         init => {
-            if KeyboardFocus.owner == self.name {
+            if KeyboardFocus.owner == self.name && !Bridge.settings-open {
                 self.focus();
             }
         }
         focus-gained(reason) => {
             if reason == FocusReason.tab-navigation {
+                // Before the pane changes: its toggle reclaims focus while the token still reads
+                // "toggle", which would bounce a Shift+Tab off this row.
+                KeyboardFocus.owner = self.name;
                 Bridge.hovered = root.provider.id;
             }
         }
