@@ -46,8 +46,7 @@ pub struct UsageWindow {
     pub duration_minutes: Option<u64>,
     pub resets_at: Option<u64>,
     pub reset_description: Option<String>,
-    /// The quota pool the window belongs to, for providers whose models share limits in groups
-    /// (Antigravity). Absent for everything else, so cached snapshots and plugins stay valid.
+    /// Antigravity's shared quota pool; absent elsewhere, so cached snapshots stay valid.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group: Option<UsageGroup>,
 }
@@ -56,7 +55,6 @@ pub struct UsageWindow {
 #[serde(rename_all = "camelCase")]
 pub struct UsageGroup {
     pub name: String,
-    /// The models that share the pool, when the provider lists them.
     pub models: Option<String>,
 }
 
@@ -233,8 +231,7 @@ pub struct TrayciSettings {
     pub percentage_display: PercentageDisplay,
     pub notifications: NotificationSettings,
     pub providers: BuiltInProviderSettings,
-    /// Provider ids in the order the user arranged them. Ids missing from it keep their usage
-    /// ordering after the ones listed, so a provider added in a later release still appears.
+    /// Ids in the user's order; unlisted ids follow by usage, so new providers still appear.
     #[serde(default)]
     pub provider_order: Vec<String>,
     #[serde(default)]

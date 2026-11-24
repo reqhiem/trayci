@@ -290,8 +290,7 @@ async fn cli_json_uses_the_typescript_contract_without_internal_errors() {
     assert!(!output.contains("secret upstream detail"));
 }
 
-/// A provider under the test's control: it counts its calls, answers from a script, and only
-/// answers once the test hands it a permit, so nothing here depends on a real account or a clock.
+/// Counts calls and answers from a script, only once handed a permit: no real account or clock.
 struct Scripted {
     id: &'static str,
     calls: Arc<AtomicUsize>,
@@ -506,8 +505,7 @@ async fn concurrent_manual_refreshes_collapse_into_one_extra_cycle() {
     let service = service(vec![Box::new(provider.gated(Arc::clone(&gate)))], &path);
     service.start().await;
 
-    // The test runtime is single threaded, so `join!` parks the first refresh on the gate and lets
-    // the other two queue behind it before the last future opens the gate.
+    // Single-threaded runtime: `join!` parks the first refresh on the gate while the others queue.
     tokio::join!(
         service.refresh_all(UsageFetchReason::Manual),
         service.refresh_all(UsageFetchReason::Manual),

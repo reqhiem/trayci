@@ -17,9 +17,8 @@ use std::{
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
-/// The children themselves, not just killers: a killed process stays in the process table as a
-/// zombie until someone waits on it, and only the `Child` can do that. Its master too: on Windows
-/// only dropping it closes the ConPTY, so a killed child's reader never sees EOF without it.
+/// The `Child`, since only waiting on it reaps a zombie, and the master, since on Windows only
+/// dropping it closes the ConPTY, so a killed child's reader sees EOF.
 type Probe = (Box<dyn Child + Send + Sync>, Box<dyn MasterPty + Send>);
 static CHILDREN: LazyLock<Mutex<HashMap<u64, Probe>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -34,8 +33,7 @@ pub async fn resolve_executable(name: &str, configured: Option<&Path>) -> Option
     runnable(resolve(name, &[env::consts::EXE_SUFFIX], configured).chain(shims))
 }
 
-/// Never a `.cmd` itself, only the native exe it starts: killing a timed-out `cmd.exe` leaves the
-/// `node.exe` it started running.
+/// Never a `.cmd`, only the exe it starts: killing a timed-out `cmd.exe` leaves `node.exe` running.
 fn runnable(mut paths: impl Iterator<Item = PathBuf>) -> Option<PathBuf> {
     paths.find_map(|path| {
         if cfg!(windows)
@@ -50,8 +48,7 @@ fn runnable(mut paths: impl Iterator<Item = PathBuf>) -> Option<PathBuf> {
     })
 }
 
-/// The native exe behind an npm cmd-shim (cmd-shim 7 or 9): a direct `.exe` target, or the one
-/// `@openai/codex`'s node launcher starts. Anything else reads as not installed.
+/// A cmd-shim 7 or 9 `.exe` target, or the exe `@openai/codex`'s node launcher starts.
 fn shim_target(shim: &Path) -> Option<PathBuf> {
     static SHIM: LazyLock<Regex> = LazyLock::new(|| {
         let pathext = regex::escape("SET PATHEXT=%PATHEXT:;.JS;=;%");
@@ -241,8 +238,7 @@ fn user_id() -> String {
 }
 
 pub fn abort_all_children() {
-    // Drained before any of them is waited on: `reap` blocks, and holding the registry through a
-    // wait would stall every probe still trying to register.
+    // Drained first: `reap` blocks, and holding the registry through it stalls new probes.
     let children = CHILDREN
         .lock()
         .expect("child registry")
@@ -254,9 +250,7 @@ pub fn abort_all_children() {
     }
 }
 
-/// Kills a child and collects it. In that order: the CLIs are interactive and do not exit on their
-/// own, so waiting on a live one never returns. A signalled child cannot ignore SIGKILL, so the
-/// wait that follows is the reap, not a second chance to hang.
+/// Kill, then wait: the CLIs never exit on their own, and SIGKILL cannot be ignored.
 fn reap((mut child, master): Probe) {
     let _ = child.kill();
     let _ = child.wait();
@@ -321,8 +315,7 @@ pub async fn run_pty(options: PtyOptions<'_>) -> Result<String, ProviderError> {
             ProviderError::new(ProviderErrorKind::Unknown, format!("CLI start: {error}"))
         })?;
         drop(pair.slave);
-        // Handed straight to the registry: whether or not this closure is still running when the
-        // caller gives up, the child is reachable to be killed and reaped.
+        // Registered at once, so the child is reaped even if the caller gives up first.
         let id = NEXT_CHILD.fetch_add(1, Ordering::Relaxed);
         CHILDREN
             .lock()
@@ -405,8 +398,7 @@ pub async fn run_pty(options: PtyOptions<'_>) -> Result<String, ProviderError> {
     outcome
 }
 
-/// Runs a non-interactive CLI to completion and returns what it printed. The child dies with the
-/// future, so a timeout, a cancellation or a dropped refresh cannot leave it running.
+/// The child dies with the future, so a timeout, cancellation or dropped refresh cannot leak it.
 pub async fn run_process(
     executable: &Path,
     args: &[&str],
@@ -453,8 +445,7 @@ pub fn strip_terminal_codes(value: &str) -> String {
         .collect()
 }
 
-/// A 429 that waits for the server's `retry-after`, in either of its forms: delta-seconds or an
-/// HTTP-date. Capped at a day, so a corrupt or hostile header cannot shelve the provider for longer.
+/// `retry-after` as seconds or HTTP-date, capped at a day so a bad header cannot shelve a provider.
 pub fn rate_limited(headers: &HeaderMap, now: u64, message: &str) -> ProviderError {
     const DAY_MS: u64 = 24 * 60 * 60_000;
     let retry_at = headers

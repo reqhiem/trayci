@@ -33,8 +33,7 @@ impl CacheRepository {
         Self { path: path.into() }
     }
 
-    /// Cached usage is only stale once it is older than [`crate::service::STALE_AFTER_MS`];
-    /// treating a snapshot from two minutes ago as stale is what made every launch re-fetch.
+    /// Cached usage is only stale once it is older than [`crate::service::STALE_AFTER_MS`].
     pub async fn load(&self, now: u64) -> HashMap<ProviderId, ProviderUsageSnapshot> {
         let Ok(bytes) = fs::read(&self.path).await else {
             return HashMap::new();

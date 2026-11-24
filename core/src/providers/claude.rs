@@ -51,9 +51,7 @@ fn credential_path() -> Option<PathBuf> {
         .or_else(|| home_dir().map(|path| path.join(".claude/.credentials.json")))
 }
 
-/// The token, whatever its `expiresAt` says: that field is not authoritative for the usage
-/// endpoint, and only a running Claude Code refreshes it, so a poller finds it "expired" most of the
-/// time. The server's 401 decides instead.
+/// Ignores `expiresAt`: only a running Claude Code refreshes it, so the server's 401 decides.
 fn read_credential() -> Option<String> {
     let value: Value = serde_json::from_slice(&fs::read(credential_path()?).ok()?).ok()?;
     Some(
@@ -210,9 +208,8 @@ async fn oauth(
     }
 }
 
-/// A rejected token is one the CLI can refresh, and a server error may be gone by the time it has
-/// run. Any other client error is the server's final answer. `NotAuthenticated` never leaves
-/// `fetch_usage`, since the service would take it as definitive and drop the last good reading.
+/// The CLI can refresh a rejected token and outlast a server error; other 4xx are final.
+/// `NotAuthenticated` never leaves `fetch_usage`: the service would drop the last good reading.
 fn failure_kind(status: reqwest::StatusCode) -> ProviderErrorKind {
     match status.as_u16() {
         401 | 403 => ProviderErrorKind::NotAuthenticated,
@@ -322,9 +319,7 @@ impl UsageProvider for ClaudeProvider {
         if context.cancellation.is_cancelled() {
             return Err(ProviderError::new(ProviderErrorKind::Aborted, "Cancelled"));
         }
-        // The CLI refreshes an expired token on its way to `/usage`, whether or not its TUI scraped.
-        // The API's numbers with that token beat the scrape, and the next poll starts from a token
-        // that works instead of repeating the whole dance.
+        // The CLI refreshes the token on its way to `/usage`; the API with it beats the scrape.
         if let Some(token) = read_credential().filter(|token| Some(token) != tried.as_ref()) {
             if let Ok(mut windows) = oauth(&token, context).await {
                 let scraped = cli

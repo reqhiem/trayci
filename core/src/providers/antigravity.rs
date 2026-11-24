@@ -144,14 +144,11 @@ pub fn normalize_antigravity_quota(value: &Value) -> Vec<UsageWindow> {
     windows.into_iter().map(|(window, _)| window).collect()
 }
 
-/// `agy` answers `/usage` in print mode as a command from this version on. Older builds send the
-/// text to the model as a prompt, so every poll would start a conversation and spend quota.
+/// First `agy` to run print-mode `/usage` as a command; older ones prompt the model, costing quota.
 const MIN_PRINT_USAGE: (u64, u64, u64) = (1, 1, 11);
-/// A due update check makes `agy` start its background updater; a quota read must not update the
-/// CLI. Only `true` disables it.
+/// A quota read must not start `agy`'s background updater; only `true` disables it.
 const PROBE_ENV: &[(&str, &str)] = &[("AGY_CLI_DISABLE_AUTO_UPDATE", "true")];
-/// Latched once `agy` answers the print-mode read with a model turn. The evidence is the same event
-/// that spends quota, so the read is not retried for the rest of the process's life.
+/// Latched once the print-mode read gets a model turn, which spent quota, so it is never retried.
 static PRINT_USAGE_UNSUPPORTED: AtomicBool = AtomicBool::new(false);
 
 pub fn parse_agy_version(output: &str) -> Option<(u64, u64, u64)> {
@@ -164,8 +161,7 @@ pub fn parse_agy_version(output: &str) -> Option<(u64, u64, u64)> {
     ))
 }
 
-/// "Gemini Models" reads "Gemini" and "Claude and GPT models" reads "Claude/GPT"; a pool named
-/// after one model ("Gemini 4 Argon") keeps its name.
+/// "Gemini Models" reads "Gemini", "Claude and GPT models" "Claude/GPT"; "Gemini 4 Argon" stays.
 pub(crate) fn pool_name(group: &str) -> String {
     let trimmed = group.trim();
     let stem = trimmed
@@ -176,8 +172,7 @@ pub(crate) fn pool_name(group: &str) -> String {
     stem.replace(" and ", "/")
 }
 
-/// The window's own name: the two lengths agy meters, or its label without the pool prefix and
-/// the "Limit Remaining" suffix, so an unknown window is named rather than forced into one of them.
+/// An unknown length keeps its label, minus the pool prefix and "Limit Remaining", as its name.
 fn window_name(duration: Option<u64>, bucket: &str, group: &str) -> String {
     match duration {
         Some(300) => "5h".into(),
@@ -210,10 +205,7 @@ fn usage_envelope(stdout: &str) -> impl Iterator<Item = Value> + '_ {
         .filter_map(|line| serde_json::from_str(line).ok())
 }
 
-/// Reads what `agy -p /usage --output-format json` prints: an envelope whose `command.data.groups`
-/// lists every quota pool and its buckets. Every group is kept, so a new pool appears without a
-/// code change. `None` means the reply is not a successful usage reading, which is not the same
-/// as an empty one.
+/// Keeps every group of `agy -p /usage --output-format json`; `None` means no usage reply at all.
 pub fn parse_antigravity_json(stdout: &str) -> Option<Vec<UsageWindow>> {
     usage_envelope(stdout).find_map(|value| {
         if value.get("status").and_then(Value::as_str) != Some("SUCCESS") {
@@ -235,8 +227,7 @@ pub fn parse_antigravity_json(stdout: &str) -> Option<Vec<UsageWindow>> {
                 .and_then(|text| text.strip_prefix("Models within this group:"))
                 .map(|text| text.trim().to_owned())
                 .filter(|text| !text.is_empty());
-            // A disabled bucket is one the tier does not meter; drawing it as 0% used would report
-            // headroom the account does not have.
+            // A disabled bucket is unmetered on this tier; 0% used would report false headroom.
             let mut buckets = group
                 .get("buckets")
                 .and_then(Value::as_array)
@@ -290,8 +281,7 @@ pub fn parse_antigravity_json(stdout: &str) -> Option<Vec<UsageWindow>> {
     })
 }
 
-/// True when the reply shows `agy` ran a model turn instead of answering a command. A real command
-/// reply has no conversation and no turns; a prompt has both.
+/// A prompt reply has a conversation and turns; a real command reply has neither.
 pub fn ran_model_turn(stdout: &str) -> bool {
     usage_envelope(stdout).any(|value| {
         value
@@ -305,8 +295,7 @@ pub fn ran_model_turn(stdout: &str) -> bool {
     })
 }
 
-/// Reads quota from `agy` in print mode, which spends nothing and needs no terminal. Any failure is
-/// returned so the caller can fall back to the interactive panel.
+/// Print mode spends nothing and needs no terminal; on error the caller falls back to the panel.
 async fn print_usage(
     executable: &Path,
     cancellation: &tokio_util::sync::CancellationToken,
@@ -320,8 +309,7 @@ async fn print_usage(
     if PRINT_USAGE_UNSUPPORTED.load(Ordering::Relaxed) {
         return Err(unsupported());
     }
-    // Rechecked on every read: the CLI can be replaced while Trayci runs, and an unsupported read
-    // costs quota.
+    // Rechecked every read: the CLI can change while running, and an unsupported read costs quota.
     let version = run_process(
         executable,
         &["--version"],

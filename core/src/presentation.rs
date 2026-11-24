@@ -1,5 +1,4 @@
-//! What the popover and the terminal view say about a reading, in #66's vocabulary: labels,
-//! countdowns, severity and order. One module, so the two views cannot drift apart.
+//! Labels, countdowns, severity and order for the popover and the TUI, in #66's vocabulary.
 
 use crate::{
     model::{PercentageDisplay, ProviderUsageSnapshot, UsageSource, UsageStatus, UsageWindow},
@@ -7,9 +6,7 @@ use crate::{
     service::STALE_AFTER_MS,
 };
 
-/// Where a provider sits in the order the user arranged, for sorting. Ids the order does not
-/// mention rank equal and last, so they keep whatever order the caller sorts by next, and an empty
-/// order ranks everything equal, which leaves the usage ordering untouched.
+/// Ids the order does not mention rank equal and last, so the caller's next sort key decides.
 pub fn provider_rank(order: &[String], id: &str) -> usize {
     order.iter().position(|o| o == id).unwrap_or(order.len())
 }
@@ -91,8 +88,7 @@ pub fn source_label(source: UsageSource) -> &'static str {
     }
 }
 
-/// Status records age only as of loading, so a reading that aged while the view stayed open
-/// counts as stale too.
+/// Also true once aged, since the status field only records age as of loading.
 pub fn is_stale(snapshot: &ProviderUsageSnapshot, now: u64) -> bool {
     snapshot.status == UsageStatus::Stale
         || now.saturating_sub(snapshot.updated_at) > STALE_AFTER_MS
@@ -104,12 +100,7 @@ pub struct Summary {
     pub stale: bool,
 }
 
-/// What a provider row shows beside its name: how old a stale reading is ("Updated 2h ago"), or
-/// the bare countdown to the tightest window's reset ("3h 54m"), which the detailed row reads as
-/// "resets in 3h 54m". A row with no windows says nothing here and shows its error instead.
-///
-/// The status field only records how old a snapshot was when it was loaded, so age is re-checked
-/// here: an aged reading must not render a healthy countdown just because it loaded as `ok` (#54).
+/// "Updated 2h ago" when stale or aged, else the tightest reset ("3h 54m"); age re-checked (#54).
 pub fn status_summary(snapshot: &ProviderUsageSnapshot, now: u64) -> Option<Summary> {
     let reset = tightest(snapshot).and_then(|window| window.resets_at);
     let summary = |text, stale| Some(Summary { text, stale });
@@ -123,9 +114,8 @@ pub fn status_summary(snapshot: &ProviderUsageSnapshot, now: u64) -> Option<Summ
     }
 }
 
-/// The window's length. An ungrouped window is keyed on its label, because Claude's per-model
-/// weekly windows ("Fable") share the weekly duration and must keep their name. A pooled window is
-/// keyed on its duration; any other length is its label without the pool's name in front.
+/// Ungrouped windows keep their label: Claude's "Fable" shares the weekly duration. Pooled ones
+/// are keyed on duration, else their label without the pool's name.
 fn cadence(window: &UsageWindow, weekly: &str) -> String {
     let Some(group) = &window.group else {
         return if window.label.eq_ignore_ascii_case("weekly") {
@@ -167,8 +157,7 @@ pub fn detail_label(window: &UsageWindow) -> String {
     labelled(window, "Weekly", " · ")
 }
 
-/// The number a meter shows: an integer, used or remaining per the setting. `round` rather than
-/// `{:.0}`, which rounds half to even.
+/// Used or remaining per the setting; `round`, not `{:.0}`, which rounds half to even.
 pub fn display_percent(used_percent: f64, mode: PercentageDisplay) -> u8 {
     let used = used_percent.clamp(0.0, 100.0);
     let shown = match mode {
@@ -186,8 +175,7 @@ pub enum Severity {
     Critical,
 }
 
-/// How much attention a meter needs, at the notification thresholds (50/85/90). Always by use, and
-/// on the rounded number, so a window shown as "90%" is red even at 89.6%.
+/// By use, at the 50/85/90 notification thresholds, on the rounded number: "90%" is red at 89.6%.
 pub fn severity(used_percent: f64) -> Severity {
     match used_percent.round() {
         used if used >= 90.0 => Severity::Critical,
@@ -322,8 +310,6 @@ mod tests {
 
     #[test]
     fn a_reading_that_loaded_as_ok_ages_out_when_not_refreshed() {
-        // The bug in #54: a snapshot the cache marked `ok` days ago kept rendering a healthy
-        // countdown, because only the load-time status field was ever consulted.
         let two_days = 2 * 24 * 60 * MINUTE;
         let mut aged = claude();
         aged.windows
@@ -338,7 +324,6 @@ mod tests {
         );
     }
 
-    /// The sort the provider list runs: the configured order first, usage breaking the rest.
     fn sorted(order: &[&str], usage: &[(&str, f64)]) -> Vec<String> {
         let order = order.iter().map(|id| id.to_string()).collect::<Vec<_>>();
         let snapshots = usage

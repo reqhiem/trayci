@@ -1,5 +1,4 @@
-//! Drives the provider against a stand-in `agy`, in its own test binary so the spawned children
-//! cannot be mistaken for zombies by the PTY reaping test.
+//! Its own test binary, so the stand-in `agy` children are not taken for zombies by the PTY test.
 #![cfg(unix)]
 
 use std::{fs, os::unix::fs::PermissionsExt};

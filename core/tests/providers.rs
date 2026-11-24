@@ -464,8 +464,7 @@ mod pty_children {
         }
     }
 
-    /// Killing a child is not the same as reaping it: until the parent waits, the process stays in the
-    /// table as `Z`. `active_child_count` cannot see that, so it is read straight from `/proc`.
+    /// From `/proc`: a killed child stays `Z` until waited on; `active_child_count` cannot see it.
     #[cfg(target_os = "linux")]
     fn zombie_children() -> Vec<u32> {
         let me = std::process::id();

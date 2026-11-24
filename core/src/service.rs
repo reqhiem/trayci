@@ -18,16 +18,10 @@ pub const BACKOFF_MS: [u64; 5] = [30_000, 60_000, 120_000, 300_000, 900_000];
 /// The poll loop ticks every second, so a longer gap means the machine was suspended.
 pub const RESUME_GAP_MS: u64 = 60_000;
 
-/// When a provider is waiting on a retry: the timestamp, and whether the provider itself asked for
-/// it (a `retry-after` header). A retry we invented is ours to skip; one the server dictated is not.
+/// (retry at, set by a `retry-after` header): only a retry we invented is ours to skip.
 type Retry = (u64, bool);
 
-/// Which providers a refresh cycle actually calls. Every reason but a manual one reuses a snapshot
-/// that is younger than one poll interval, so a startup with a warm cache and a retry cycle for one
-/// failing provider stay off the network instead of dragging every provider along with them. A
-/// retry cycle still picks up whatever has gone stale: a provider stuck in permanent backoff
-/// retries often enough to pre-empt the poll tick forever, which froze every healthy provider for
-/// the rest of the session (#54).
+/// Startup, poll and retry cycles skip snapshots younger than one poll interval (#54).
 pub fn should_fetch(
     reason: UsageFetchReason,
     retry: Option<Retry>,
@@ -45,7 +39,6 @@ pub fn should_fetch(
     }
 }
 
-/// Why the poll loop would refresh on this tick, if at all.
 pub fn refresh_reason(
     gap_ms: u64,
     refresh_on_resume: bool,
@@ -249,16 +242,13 @@ impl UsageService {
             .await)
     }
 
-    /// `refresh` only when the change can alter what a provider reports. Cosmetic settings still
-    /// have to emit, so the tray tooltip follows them, but must never cost a provider request.
+    /// `refresh` only when a provider's report can change; cosmetic settings just emit.
     pub async fn settings_changed(self: &Arc<Self>, refresh: bool) {
         let enabled = self.enabled_provider_ids();
         {
             let mut inner = self.inner.lock().await;
             inner.state.providers.retain(|id, _| enabled.contains(id));
-            // A provider disabled while it was backing off would otherwise keep its retry due for
-            // the rest of the session, waking the poll loop every second for a cycle that can
-            // fetch nothing, and leaving a stale failure count for whenever it is switched back on.
+            // Else a provider disabled mid-backoff stays due, waking the loop every second.
             inner.failures.retain(|id, _| enabled.contains(id));
             inner.next_retry.retain(|id, _| enabled.contains(id));
         }
@@ -268,7 +258,6 @@ impl UsageService {
         }
     }
 
-    /// Whether any provider is owed a retry now. The poll loop asks every second.
     pub async fn has_due_retry(&self, now: u64) -> bool {
         self.inner
             .lock()
@@ -467,8 +456,7 @@ fn is_definitive(kind: ProviderErrorKind) -> bool {
     )
 }
 
-/// What a provider shows after a failed fetch: a cancelled one keeps its last reading, a transient
-/// failure keeps recent meters marked stale with the error, anything else is the error alone.
+/// Cancelled keeps the last reading, transient keeps recent meters as stale, else the error alone.
 pub(crate) fn failed_snapshot(
     provider: &dyn UsageProvider,
     previous: Option<ProviderUsageSnapshot>,

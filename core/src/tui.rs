@@ -1,6 +1,5 @@
-//! `trayci` in a terminal (#67): the popover's numbers in #66's vocabulary. Paints from the cache,
-//! fetches the enabled providers once, then again on `r` and at most every `pollIntervalMinutes`.
-//! Read-only: it never writes `cache.json` or the settings.
+//! `trayci` in a terminal (#67): paints from the cache, fetches on start, on `r` and at most every
+//! `pollIntervalMinutes`. Read-only: it never writes `cache.json` or the settings.
 
 use crate::{
     cli::now_ms,
@@ -69,7 +68,6 @@ fn width_of(line: &Line) -> usize {
     line.iter().map(|(text, _)| text.chars().count()).sum()
 }
 
-/// Cut a line to `width` columns.
 fn clip(line: Line, width: usize) -> Line {
     let mut left = width;
     line.into_iter()
@@ -224,7 +222,6 @@ fn compact(snapshot: &ProviderUsageSnapshot, view: View, now: u64, width: usize)
     spread(title(snapshot), right, width)
 }
 
-/// The whole screen, top to bottom, each line at most `width` columns.
 pub fn render(
     providers: &[&ProviderUsageSnapshot],
     view: View,
@@ -262,8 +259,7 @@ struct Screen;
 
 impl Screen {
     fn enter() -> io::Result<Self> {
-        // Only a panic on this thread ends the view; a provider's panic on a runtime worker is
-        // caught and shown as that provider's error.
+        // Only this thread's panic ends the view; a worker's shows as that provider's error.
         let owner = std::thread::current().id();
         let previous = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |info| {
