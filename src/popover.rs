@@ -78,6 +78,25 @@ struct State {
     save: Option<Save>,
 }
 
+impl State {
+    fn finish_drag(
+        &mut self,
+        origin: PhysicalPosition<i32>,
+        landed: PhysicalPosition<i32>,
+        positions_real: bool,
+    ) {
+        if landed == origin {
+            // A press on the header that moved nothing is a click, not a drag: storing where the
+            // popover already sat would pin it there and stop it following the tray icon. A drag
+            // that came back to its origin left a `Moved` spot behind that is no longer true.
+            self.pending = None;
+        } else if positions_real {
+            self.custom = Some(landed);
+            self.pending = Some(landed);
+        }
+    }
+}
+
 /// The popover window's placement and visibility. Cheap to clone and to send to another thread,
 /// but every method must run on the Slint thread: post it there with `invoke_from_event_loop`.
 #[derive(Clone)]
@@ -271,14 +290,11 @@ impl Popover {
                 button: slint::platform::PointerEventButton::Left,
             });
         let landed = ui.window().position();
-        let landed = PhysicalPosition::new(landed.x, landed.y);
-        // A press on the header that moved nothing is a click, not a drag: storing where the
-        // popover already sat would pin it there and stop it following the tray icon.
-        if landed != origin && positions_are_real() {
-            let mut state = self.state();
-            state.custom = Some(landed);
-            state.pending = Some(landed);
-        }
+        self.state().finish_drag(
+            origin,
+            PhysicalPosition::new(landed.x, landed.y),
+            positions_are_real(),
+        );
         self.save_pending();
     }
 
@@ -489,6 +505,24 @@ mod tests {
         assert!(hidden_by_this_click(Some(now), now + BLUR_GRACE / 2));
         assert!(!hidden_by_this_click(Some(now), now + BLUR_GRACE));
         assert!(!hidden_by_this_click(None, now));
+    }
+
+    #[test]
+    fn a_drag_back_to_its_origin_stores_nothing() {
+        let origin = PhysicalPosition::new(720, 180);
+        let mut state = State {
+            pending: Some(PhysicalPosition::new(900, 400)),
+            ..Default::default()
+        };
+        state.finish_drag(origin, origin, true);
+        assert_eq!(
+            state.pending, None,
+            "the spot it passed through is not saved"
+        );
+
+        state.finish_drag(origin, PhysicalPosition::new(920, 380), true);
+        assert_eq!(state.pending, Some(PhysicalPosition::new(920, 380)));
+        assert_eq!(state.custom, Some(PhysicalPosition::new(920, 380)));
     }
 
     #[test]
