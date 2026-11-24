@@ -197,23 +197,30 @@ export component UsageView inherits Rectangle {
 
     list := VerticalLayout {
         alignment: start;
-        if Bridge.error != "" : Rectangle {
-            x: 7px * Theme.scale;
-            width: parent.width - 14px * Theme.scale;
-            border-width: 1px;
-            border-color: Theme.accent-line;
-            border-radius: 6px * Theme.scale;
-            background: Theme.accent-fill;
+        // Collapsed rather than behind an `if`: there Slint measures the wrapped text at a width of
+        // its own choosing, and a two-line error pushed the last row out of the window.
+        Rectangle {
+            height: Bridge.error != "" ? self.preferred-height : 0;
+            visible: Bridge.error != "";
             HorizontalLayout {
-                padding-left: 9px * Theme.scale;
-                padding-right: 9px * Theme.scale;
-                padding-top: 7px * Theme.scale;
-                padding-bottom: 7px * Theme.scale;
-                Text {
-                    text: Bridge.error;
-                    color: Theme.danger;
-                    font-size: 11px * Theme.scale;
-                    wrap: word-wrap;
+                padding: 7px * Theme.scale;
+                Rectangle {
+                    border-width: 1px;
+                    border-color: Theme.accent-line;
+                    border-radius: 6px * Theme.scale;
+                    background: Theme.accent-fill;
+                    HorizontalLayout {
+                        padding-left: 9px * Theme.scale;
+                        padding-right: 9px * Theme.scale;
+                        padding-top: 7px * Theme.scale;
+                        padding-bottom: 7px * Theme.scale;
+                        Text {
+                            text: Bridge.error;
+                            color: Theme.danger;
+                            font-size: 11px * Theme.scale;
+                            wrap: word-wrap;
+                        }
+                    }
                 }
             }
         }
@@ -267,18 +274,18 @@ component DetailEntry inherits Rectangle {
     }
 }
 
-component Detail inherits VerticalLayout {
+component Detail inherits Rectangle {
     in property <ProviderView> provider;
     property <SettingsView> edited;
 
+    accessible-role: complementary;
+    accessible-label: root.provider.name + " details";
+
+    VerticalLayout {
     padding-left: 14px * Theme.scale;
     padding-right: 14px * Theme.scale;
     padding-top: 12px * Theme.scale;
     padding-bottom: 14px * Theme.scale;
-    spacing: 14px * Theme.scale;
-
-    accessible-role: complementary;
-    accessible-label: root.provider.name + " details";
 
     VerticalLayout {
         spacing: 2px * Theme.scale;
@@ -361,18 +368,28 @@ component Detail inherits VerticalLayout {
     }
 
     if root.provider.meters.length > 0 : VerticalLayout {
+        padding-top: 14px * Theme.scale;
         spacing: 12px * Theme.scale;
         for meter in root.provider.meters : DetailEntry {
             meter: meter;
         }
     }
 
-    if root.provider.error != "" : Small {
-        text: root.provider.error;
-        color: Theme.danger;
-        height: self.preferred-height;
-        wrap: word-wrap;
-        overflow: clip;
+    // Collapsed, not behind an `if`, so its wrapped lines count towards the scroll height. A
+    // plain Text, not Small: Small's 14px line would keep a long error to one line.
+    Rectangle {
+        height: root.provider.error != "" ? self.preferred-height : 0;
+        visible: root.provider.error != "";
+        VerticalLayout {
+            padding-top: 14px * Theme.scale;
+            Text {
+                text: root.provider.error;
+                color: Theme.danger;
+                font-size: 11px * Theme.scale;
+                wrap: word-wrap;
+            }
+        }
+    }
     }
 
     function flip-percentage() {
@@ -392,10 +409,12 @@ export component DetailPane inherits Rectangle {
         content-height: content.preferred-height;
         content := VerticalLayout {
             alignment: start;
-            for provider in Bridge.providers : VerticalLayout {
-                if provider.id == root.shown : Detail {
-                    provider: provider;
-                }
+            // Every provider's detail, all but the shown one collapsed: one behind an `if` would be
+            // measured at the wrong width, and a wrapped error would fall outside the scroll range.
+            for provider in Bridge.providers : Detail {
+                provider: provider;
+                visible: provider.id == root.shown;
+                height: self.visible ? self.preferred-height : 0;
             }
         }
     }
