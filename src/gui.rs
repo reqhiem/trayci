@@ -43,6 +43,14 @@ pub fn run(runtime: Runtime) -> Result<(), Box<dyn Error>> {
     if let Err(error) = runtime.block_on(autostart::set_enabled(settings.start_on_login)) {
         eprintln!("trayci: could not update start on login: {error}");
     }
+    // A tray flyout, not an app window: no taskbar button.
+    #[cfg(windows)]
+    slint::BackendSelector::new()
+        .with_winit_window_attributes_hook(|attributes| {
+            use slint::winit_030::winit::platform::windows::WindowAttributesExtWindows;
+            attributes.with_skip_taskbar(true)
+        })
+        .select()?;
     let ui = ui::Popover::new()?;
     let popover = Popover::new(&ui, settings.window_position);
     let settings = Arc::new(Mutex::new(settings));
@@ -234,9 +242,21 @@ fn notify(runtime: &Handle, request: NotificationRequest) {
     });
 }
 
-/// W4 sends these as Windows toasts.
+/// A toast. It shows as Trayci only from an install: Windows names a toast after the Start menu
+/// shortcut whose AppUserModelID matches, and the installer stamps the identifier on it.
 #[cfg(windows)]
-fn notify(_runtime: &Handle, _request: NotificationRequest) {}
+fn notify(runtime: &Handle, request: NotificationRequest) {
+    runtime.spawn_blocking(move || {
+        let shown = notify_rust::Notification::new()
+            .app_id("com.trayci.Trayci")
+            .summary(&request.title)
+            .body(&request.body)
+            .show();
+        if let Err(error) = shown {
+            eprintln!("trayci: notification failed: {error}");
+        }
+    });
+}
 
 fn now_ms() -> u64 {
     std::time::SystemTime::now()

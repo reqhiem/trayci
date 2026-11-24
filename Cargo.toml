@@ -16,6 +16,9 @@ rust-version.workspace = true
 license.workspace = true
 
 [build-dependencies]
+# Embeds the exe icon on Windows, which the Start menu shortcut, toasts and the tray use; a no-op
+# for other targets.
+embed-resource = "3"
 slint-build = "~1.18"
 
 [dependencies]
@@ -41,8 +44,21 @@ notify-rust = "4"
 # Already in the tree through Slint; decodes the tray icon for ksni.
 png = "0.18"
 
-# `AttachConsole` for CLI output from the GUI-subsystem exe, and the HKCU Run value for start at
-# login (issue #52).
+# `AttachConsole` for CLI output from the GUI-subsystem exe, the work area and pointer for the
+# popover, the single-instance pipe, and the HKCU Run value for start at login (issue #52).
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
+notify-rust = "4"
+# 0.24 shares Slint's muda 0.19. Slint installs muda's set-once menu handler only for a MenuBar or
+# ContextMenuArea, which the popover has none of, so the tray menu keeps it.
+tray-icon = { version = "0.24", default-features = false }
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_IO",
+    "Win32_System_Pipes",
+    "Win32_UI_WindowsAndMessaging",
+] }
 winreg = "0.10"
