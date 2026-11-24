@@ -3,6 +3,7 @@ import { Bridge } from "bridge.slint";
 import { Theme } from "theme.slint";
 import { Topbar } from "topbar.slint";
 import { UsageView, DetailPane } from "usage.slint";
+import { KeyboardFocus } from "components/icon-button.slint";
 import { SettingsPage } from "settings.slint";
 
 export { Bridge, Severity, MeterView, MeterLine, ProviderView, ProviderSetting, SettingsView } from "bridge.slint";
@@ -25,9 +26,19 @@ export component Popover inherits Window {
 
     forward-focus: scope;
 
+    // Closing the pane, by a hide or by the pointer leaving, takes its focused toggle with it.
+    changed detail-open => {
+        if !self.detail-open && KeyboardFocus.owner == "toggle" {
+            scope.focus();
+        }
+    }
+
     scope := FocusScope {
         // Holds the focus between the controls, for Escape, without being a Tab stop of its own.
         focus-on-tab-navigation: false;
+        focus-gained => {
+            KeyboardFocus.owner = "";
+        }
         key-pressed(event) => {
             if event.text != Key.Escape {
                 return reject;

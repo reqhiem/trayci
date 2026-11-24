@@ -26,13 +26,30 @@ export component TipBox inherits Rectangle {
     }
 }
 
+// The KeyFocus the keyboard was last on, by name, for the elements that have to take the focus
+// back: Rust rebuilds the provider rows and detail panes with every model it sends, and a focus
+// left on an element that is gone, or hidden, receives no key, Escape included. Only gaining
+// the focus writes it: Slint also drops the focus of an element that turned invisible, and that
+// is exactly the case that has to be restored.
+export global KeyboardFocus {
+    in-out property <string> owner;
+}
+
 // Keyboard access for a clickable element, laid over it: Tab focuses it, Space or Enter activates
 // it, and an inset accent ring shows while it has focus. A click doesn't focus it, so the ring is
 // the keyboard's alone, like :focus-visible. Other keys are rejected and reach the popover's own
 // handler, so Escape still unpins, then hides.
 export component KeyFocus inherits FocusScope {
     in property <length> radius;
+    // What KeyboardFocus.owner reads while the keyboard is here.
+    in property <string> name;
     callback activated;
+
+    changed has-focus => {
+        if self.has-focus {
+            KeyboardFocus.owner = root.name;
+        }
+    }
 
     focus-on-click: false;
     key-pressed(event) => {

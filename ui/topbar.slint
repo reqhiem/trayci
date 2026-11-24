@@ -6,17 +6,27 @@ import { IconButton, KeyFocus, TipBox } from "components/icon-button.slint";
 
 export component Topbar inherits Rectangle {
     property <SettingsView> edited;
-    // The switch came from the keyboard: the other view's back or gear button takes the focus.
-    property <bool> refocus;
+    property <bool> open: Bridge.settings-open;
     // Hands the keyboard focus back to the popover itself.
     callback focus-root;
 
-    // A view switch rebuilds this bar and hides the other view, which takes the focused element
-    // with it, and a focus left on nothing would leave Escape with nowhere to go.
+    // A view switch hides the focused element, and Slint delivers no key to a focus left on a
+    // hidden one: Escape would stop working. From the keyboard the focus goes to the other view's
+    // back or gear button, as in the React popover; from the pointer, to the popover itself.
     function switch-view(open: bool, from-keyboard: bool) {
-        root.refocus = from-keyboard;
         Bridge.settings-open = open;
         if !from-keyboard {
+            root.focus-root();
+        } else if open {
+            back-key.focus();
+        } else {
+            gear.focus();
+        }
+    }
+
+    // Settings also closes when the popover hides, and that hides whatever had the focus there.
+    changed open => {
+        if !self.open && !gear.has-focus {
             root.focus-root();
         }
     }
@@ -32,136 +42,133 @@ export component Topbar inherits Rectangle {
         }
     }
 
-    if !Bridge.settings-open : HorizontalLayout {
+    // Both bars always exist, so a view switch can hand the focus straight to the other one.
+    Rectangle {
+        y: 0;
         height: parent.height - 1px;
-        // Centres the 24px buttons on the 31px line.
-        padding-top: 3.5px * Theme.scale;
-        padding-bottom: 3.5px * Theme.scale;
-        padding-left: 12px * Theme.scale;
-        padding-right: 6px * Theme.scale;
-        spacing: 2px * Theme.scale;
-        Text {
-            text: "Usage";
-            color: Theme.paper;
-            font-size: 13px * Theme.scale;
-            font-weight: 500;
-            vertical-alignment: center;
-            horizontal-stretch: 1;
-            accessible-role: none;
-        }
-        IconButton {
-            icon: @image-url("icons/density.svg");
-            label: "Compact view";
-            tip: Bridge.settings.compact ? "Detailed view" : "Compact view";
-            pressed: Bridge.settings.compact;
-            accessible-checkable: true;
-            accessible-checked: Bridge.settings.compact;
-            clicked => {
-                root.edited = Bridge.settings;
-                root.edited.compact = !root.edited.compact;
-                Bridge.update-settings(root.edited);
+        visible: !Bridge.settings-open;
+        HorizontalLayout {
+            // Centres the 24px buttons on the 31px line.
+            padding-top: 3.5px * Theme.scale;
+            padding-bottom: 3.5px * Theme.scale;
+            padding-left: 12px * Theme.scale;
+            padding-right: 6px * Theme.scale;
+            spacing: 2px * Theme.scale;
+            Text {
+                text: "Usage";
+                color: Theme.paper;
+                font-size: 13px * Theme.scale;
+                font-weight: 500;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                accessible-role: none;
             }
-        }
-        IconButton {
-            icon: @image-url("icons/refresh.svg");
-            label: "Refresh usage";
-            tip: Bridge.refreshed-ago != "" ? "Refresh · " + Bridge.refreshed-ago : "Refresh";
-            enabled: !Bridge.refreshing;
-            spinning: Bridge.refreshing;
-            clicked => {
-                Bridge.refresh();
-            }
-        }
-        IconButton {
-            icon: @image-url("icons/gear.svg");
-            label: "Settings";
-            tip: "Settings";
-            init => {
-                if root.refocus {
-                    self.focus();
-                    root.refocus = false;
+            IconButton {
+                icon: @image-url("icons/density.svg");
+                label: "Compact view";
+                tip: Bridge.settings.compact ? "Detailed view" : "Compact view";
+                pressed: Bridge.settings.compact;
+                accessible-checkable: true;
+                accessible-checked: Bridge.settings.compact;
+                clicked => {
+                    root.edited = Bridge.settings;
+                    root.edited.compact = !root.edited.compact;
+                    Bridge.update-settings(root.edited);
                 }
             }
-            clicked => {
-                root.switch-view(true, self.has-focus);
+            IconButton {
+                icon: @image-url("icons/refresh.svg");
+                label: "Refresh usage";
+                tip: Bridge.refreshed-ago != "" ? "Refresh · " + Bridge.refreshed-ago : "Refresh";
+                enabled: !Bridge.refreshing;
+                spinning: Bridge.refreshing;
+                clicked => {
+                    Bridge.refresh();
+                }
+            }
+            gear := IconButton {
+                icon: @image-url("icons/gear.svg");
+                label: "Settings";
+                tip: "Settings";
+                clicked => {
+                    root.switch-view(true, self.has-focus);
+                }
             }
         }
     }
 
-    if Bridge.settings-open : HorizontalLayout {
+    Rectangle {
+        y: 0;
         height: parent.height - 1px;
-        padding-top: 4.5px * Theme.scale;
-        padding-bottom: 4.5px * Theme.scale;
-        padding-left: 8px * Theme.scale;
-        padding-right: 8px * Theme.scale;
-        spacing: 6px * Theme.scale;
-        back := TouchArea {
-            width: 16px * Theme.scale;
-            accessible-role: button;
-            accessible-label: "Back to usage";
-            accessible-action-default => {
-                root.switch-view(false, false);
-            }
-            clicked => {
-                root.switch-view(false, false);
-            }
-            Image {
-                width: 6.24px * Theme.scale;
-                height: 8.49px * Theme.scale;
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2;
-                source: @image-url("icons/back.svg");
-                colorize: Theme.paper;
-                accessible-role: none;
-            }
-            KeyFocus {
-                radius: 5px * Theme.scale;
-                init => {
-                    if root.refocus {
-                        self.focus();
-                        root.refocus = false;
+        visible: Bridge.settings-open;
+        HorizontalLayout {
+            padding-top: 4.5px * Theme.scale;
+            padding-bottom: 4.5px * Theme.scale;
+            padding-left: 8px * Theme.scale;
+            padding-right: 8px * Theme.scale;
+            spacing: 6px * Theme.scale;
+            back := TouchArea {
+                width: 16px * Theme.scale;
+                accessible-role: button;
+                accessible-label: "Back to usage";
+                accessible-action-default => {
+                    root.switch-view(false, false);
+                }
+                clicked => {
+                    root.switch-view(false, false);
+                }
+                Image {
+                    width: 6.24px * Theme.scale;
+                    height: 8.49px * Theme.scale;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    source: @image-url("icons/back.svg");
+                    colorize: Theme.paper;
+                    accessible-role: none;
+                }
+                back-key := KeyFocus {
+                    radius: 5px * Theme.scale;
+                    activated => {
+                        root.switch-view(false, true);
                     }
                 }
-                activated => {
-                    root.switch-view(false, true);
-                }
-            }
-        }
-        Text {
-            text: "Settings";
-            color: Theme.paper;
-            font-size: 12px * Theme.scale;
-            font-weight: 650;
-            vertical-alignment: center;
-            horizontal-stretch: 1;
-            accessible-role: none;
-        }
-        close := TouchArea {
-            width: 23px * Theme.scale;
-            accessible-role: button;
-            accessible-label: "Back to usage";
-            accessible-action-default => {
-                root.switch-view(false, false);
-            }
-            clicked => {
-                root.switch-view(false, false);
             }
             Text {
-                text: "×";
-                color: close.has-hover ? Theme.paper : Theme.muted;
-                font-size: 13px * Theme.scale;
-                letter-spacing: 1px * Theme.scale;
+                text: "Settings";
+                color: Theme.paper;
+                font-size: 12px * Theme.scale;
+                font-weight: 650;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
                 accessible-role: none;
             }
-            KeyFocus {
-                radius: 5px * Theme.scale;
-                activated => {
-                    root.switch-view(false, true);
+            close := TouchArea {
+                width: 23px * Theme.scale;
+                accessible-role: button;
+                accessible-label: "Back to usage";
+                accessible-action-default => {
+                    root.switch-view(false, false);
                 }
-            }
-            Tooltip {
-                TipBox {
-                    text: "Back to usage";
+                clicked => {
+                    root.switch-view(false, false);
+                }
+                Text {
+                    text: "×";
+                    color: close.has-hover ? Theme.paper : Theme.muted;
+                    font-size: 13px * Theme.scale;
+                    letter-spacing: 1px * Theme.scale;
+                    accessible-role: none;
+                }
+                KeyFocus {
+                    radius: 5px * Theme.scale;
+                    activated => {
+                        root.switch-view(false, true);
+                    }
+                }
+                Tooltip {
+                    TipBox {
+                        text: "Back to usage";
+                    }
                 }
             }
         }
