@@ -41,7 +41,7 @@ pub fn should_fetch(
     }
     match reason {
         UsageFetchReason::Manual | UsageFetchReason::Resume | UsageFetchReason::PopoverOpen => true,
-        _ => updated_at.map_or(true, |updated| now.saturating_sub(updated) >= interval_ms),
+        _ => updated_at.is_none_or(|updated| now.saturating_sub(updated) >= interval_ms),
     }
 }
 
@@ -413,7 +413,7 @@ impl UsageService {
                 inner
                     .state
                     .last_refresh_completed_at
-                    .map_or(true, |completed| now >= completed + interval)
+                    .is_none_or(|completed| now >= completed + interval)
             };
             let retry_due = self.has_due_retry(now).await;
             if let Some(reason) =

@@ -332,7 +332,7 @@ async fn print_usage(
     .await?;
     let version = parse_agy_version(&String::from_utf8_lossy(&version.stdout))
         .or_else(|| parse_agy_version(&String::from_utf8_lossy(&version.stderr)));
-    if version.map_or(true, |version| version < MIN_PRINT_USAGE) {
+    if version.is_none_or(|version| version < MIN_PRINT_USAGE) {
         return Err(unsupported());
     }
     let output = run_process(

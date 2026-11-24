@@ -1,270 +1,220 @@
+use crate::ui::{self, Bridge};
+use slint::{
+    winit_030::{
+        winit::{
+            dpi::{PhysicalPosition, PhysicalSize},
+            event::WindowEvent,
+        },
+        EventResult, WinitWindowAccessor,
+    },
+    ComponentHandle,
+};
 use std::{
-    sync::Mutex,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
-use tauri::{
-    LogicalSize, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder, WindowEvent,
-};
 
-pub const LABEL: &str = "popover";
-pub const MIN_WIDTH: f64 = 340.0;
-/// Width of the master column: the popover grows rightwards from it.
-pub const COLUMN_WIDTH: f64 = 360.0;
-pub const MAX_WIDTH: f64 = 1200.0;
-pub const MIN_HEIGHT: f64 = 70.0;
-pub const MAX_HEIGHT: f64 = 1000.0;
-
-pub struct PopoverState {
-    anchor: Mutex<Option<PhysicalPosition<f64>>>,
-    /// Where the user dragged the popover; sticky across sessions.
-    custom_position: Mutex<Option<PhysicalPosition<i32>>>,
-    /// Set while the user drags the header, so the app's own moves are not mistaken for one.
-    dragging: Mutex<bool>,
-    /// Window origin when the header drag began, in screen pixels.
-    drag_origin: Mutex<Option<PhysicalPosition<i32>>>,
-    /// A drag waiting to be written to settings.
-    pending: Mutex<Option<PhysicalPosition<i32>>>,
-    scale: Mutex<f64>,
-    blurred_at: Mutex<Option<Instant>>,
-}
-
-impl Default for PopoverState {
-    fn default() -> Self {
-        Self {
-            anchor: Mutex::new(None),
-            custom_position: Mutex::new(None),
-            dragging: Mutex::new(false),
-            drag_origin: Mutex::new(None),
-            pending: Mutex::new(None),
-            scale: Mutex::new(1.0),
-            blurred_at: Mutex::new(None),
-        }
-    }
-}
-
-impl PopoverState {
-    pub fn set_custom_position(&self, position: Option<(i32, i32)>) {
-        *self.custom_position.lock().expect("popover position lock") =
-            position.map(|(x, y)| PhysicalPosition::new(x, y));
-    }
-
-    pub fn set_dragging(&self, dragging: bool) {
-        *self.dragging.lock().expect("popover dragging lock") = dragging;
-    }
-
-    fn is_dragging(&self) -> bool {
-        *self.dragging.lock().expect("popover dragging lock")
-    }
-
-    fn take_pending(&self) -> Option<PhysicalPosition<i32>> {
-        self.pending.lock().expect("popover pending lock").take()
-    }
-}
-
-/// GTK reports a Wayland toplevel as sitting at its surface origin and cannot move it back, so a
-/// move reported there is neither the position the user sees nor one we could ever restore. Storing
-/// it would park the popover in a corner the first time the settings are read on an X11 session.
-pub fn positions_are_real() -> bool {
-    if !cfg!(target_os = "linux") {
-        return true;
-    }
-    std::env::var("GDK_BACKEND").is_ok_and(|backend| backend == "x11")
-        || std::env::var_os("WAYLAND_DISPLAY").is_none()
-}
-
-pub fn create(app: &tauri::AppHandle) -> tauri::Result<WebviewWindow> {
-    let window = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("index.html".into()))
-        .title("Trayci")
-        .inner_size(360.0, 140.0)
-        .min_inner_size(MIN_WIDTH, MIN_HEIGHT)
-        .max_inner_size(MAX_WIDTH, MAX_HEIGHT)
-        .decorations(false)
-        .resizable(false)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .visible(false)
-        .focused(false)
-        .build()?;
-
-    let hide = window.clone();
-    let app_handle = app.clone();
-    window.on_window_event(move |event| match event {
-        WindowEvent::Focused(false) => {
-            // A window manager that grabs the pointer for an interactive move takes focus with it,
-            // so a focus-out during a drag is not the user clicking away.
-            let state = app_handle.state::<PopoverState>();
-            if state.is_dragging() {
-                return;
-            }
-            *state.blurred_at.lock().expect("popover blur lock") = Some(Instant::now());
-            save_position(&app_handle);
-            let _ = hide.hide();
-        }
-        WindowEvent::Moved(position) => {
-            let state = app_handle.state::<PopoverState>();
-            if !state.is_dragging() || !positions_are_real() {
-                return;
-            }
-            state.set_custom_position(Some((position.x, position.y)));
-            *state.pending.lock().expect("popover pending lock") = Some(*position);
-        }
-        _ => {}
-    });
-    forward_escape(&window)?;
-    Ok(window)
-}
-
-/// Sends Escape to the page from GTK, above WebKit (issue #38).
-///
-/// After the popover closes itself, the first key of the next open reaches the `WebKitWebView` in
-/// GTK but never the document, so a `keydown` listener needed a second Escape. Blurring the page
-/// before hiding it did not change that. The toplevel does see every key, so Escape goes to the page
-/// as an event and stops here, or WebKit would deliver the ones it does not drop a second time.
 #[cfg(target_os = "linux")]
-fn forward_escape(window: &WebviewWindow) -> tauri::Result<()> {
-    let popover = window.clone();
-    window.run_on_main_thread(move || {
-        use gtk::{glib::Propagation, prelude::*};
-        use tauri::Emitter;
-        let Ok(gtk) = popover.gtk_window() else {
+mod linux;
+#[cfg(target_os = "linux")]
+use linux as platform;
+#[cfg(windows)]
+mod windows;
+#[cfg(windows)]
+use windows as platform;
+
+/// Width of the master column: the popover grows rightwards from it.
+const COLUMN_WIDTH: f64 = 360.0;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Rect {
+    pub position: PhysicalPosition<i32>,
+    pub size: PhysicalSize<u32>,
+}
+
+impl Rect {
+    fn contains(&self, (x, y): (f64, f64)) -> bool {
+        let (left, top) = (f64::from(self.position.x), f64::from(self.position.y));
+        (left..left + f64::from(self.size.width)).contains(&x)
+            && (top..top + f64::from(self.size.height)).contains(&y)
+    }
+}
+
+#[derive(Default)]
+struct State {
+    /// Where the popover opened from: the tray icon, or the pointer.
+    anchor: Option<PhysicalPosition<f64>>,
+    /// Where the user put the popover; sticky across sessions.
+    custom: Option<PhysicalPosition<i32>>,
+    blurred_at: Option<Instant>,
+    /// Whether the popover has had focus since it was shown: X11 reports a focus-out as the
+    /// window maps, before the focus-in, and only a later one means the user clicked away.
+    focused: bool,
+}
+
+/// The popover window's placement and visibility. Cheap to clone and to send to another thread,
+/// but every method must run on the Slint thread: post it there with `invoke_from_event_loop`.
+#[derive(Clone)]
+pub struct Popover {
+    ui: slint::Weak<ui::Popover>,
+    state: Arc<Mutex<State>>,
+}
+
+impl Popover {
+    pub fn new(ui: &ui::Popover, custom: Option<(i32, i32)>) -> Self {
+        let popover = Self {
+            ui: ui.as_weak(),
+            state: Arc::default(),
+        };
+        popover.state().custom = custom.map(|(x, y)| PhysicalPosition::new(x, y));
+        let events = popover.clone();
+        ui.window().on_winit_window_event(move |_, event| {
+            // Deferred: hiding or moving the window from inside its own event dispatch re-enters
+            // the backend.
+            let popover = events.clone();
+            match event {
+                WindowEvent::Focused(true) => popover.state().focused = true,
+                WindowEvent::Focused(false) if std::mem::take(&mut popover.state().focused) => {
+                    slint::Timer::single_shot(Duration::ZERO, move || popover.blurred());
+                }
+                // The window follows its content's size, and growing taller from the tray icon
+                // would run off a bottom panel's monitor.
+                WindowEvent::Resized(_) => {
+                    slint::Timer::single_shot(Duration::ZERO, move || popover.position());
+                }
+                _ => {}
+            }
+            EventResult::Propagate
+        });
+        popover
+    }
+
+    fn state(&self) -> std::sync::MutexGuard<'_, State> {
+        self.state.lock().expect("popover state lock")
+    }
+
+    pub fn toggle(&self, anchor: PhysicalPosition<f64>) {
+        let Some(ui) = self.ui.upgrade() else {
             return;
         };
-        gtk.connect_key_press_event(move |_, event| {
-            if event.keyval() != gtk::gdk::keys::constants::Escape {
-                return Propagation::Proceed;
-            }
-            let _ = popover.emit_to(LABEL, "popover:escape", ());
-            Propagation::Stop
-        });
-    })
-}
-
-#[cfg(not(target_os = "linux"))]
-fn forward_escape(_window: &WebviewWindow) -> tauri::Result<()> {
-    Ok(())
-}
-
-/// Records where the popover was when the header was pressed.
-///
-/// The move itself is the window manager's: Tauri's drag script answers the same press with
-/// `start_dragging`. The capability file refused that command until it granted
-/// `core:window:allow-start-dragging`, and that is what left the header dead on every platform
-/// (issue #37). It was not the zero timestamp `tao` passes to `begin_move_drag`: muffin 6.4.1
-/// honours the request with it.
-pub fn begin_drag(app: &tauri::AppHandle) {
-    let state = app.state::<PopoverState>();
-    let origin = app
-        .get_webview_window(LABEL)
-        .and_then(|window| window.outer_position().ok());
-    *state.drag_origin.lock().expect("popover drag origin lock") = origin;
-    state.set_dragging(origin.is_some());
-}
-
-/// Ends the drag and persists where the popover actually came to rest.
-pub fn end_drag(app: &tauri::AppHandle) {
-    let state = app.state::<PopoverState>();
-    // `show` drops a drag the webview never saw end, and the origin with it: carrying on would store
-    // wherever the reopened popover sits as a position the user chose.
-    if !state.is_dragging() {
-        return;
-    }
-    // Not the cursor position: a window manager refuses to move a window past the edge of the work
-    // area, so against an edge the pointer keeps travelling while the window does not. Storing the
-    // pointer's target would save a position the popover was never at, and the clamp in `placement`
-    // would then drop it somewhere else again on the next open.
-    let origin = *state.drag_origin.lock().expect("popover drag origin lock");
-    let landed = app
-        .get_webview_window(LABEL)
-        .and_then(|window| window.outer_position().ok())
-        .filter(|_| positions_are_real())
-        // A press on the header that moved nothing is a click, not a drag: storing where the
-        // popover already sat would pin it there and stop it following the tray icon.
-        .filter(|landed| Some(*landed) != origin);
-    if let Some(landed) = landed {
-        state.set_custom_position(Some((landed.x, landed.y)));
-        *state.pending.lock().expect("popover pending lock") = Some(landed);
-    }
-    *state.drag_origin.lock().expect("popover drag origin lock") = None;
-    state.set_dragging(false);
-    save_position(app);
-}
-
-/// Writes a dragged position to settings. Called when the popover closes, not while it moves.
-pub fn save_position(app: &tauri::AppHandle) {
-    let Some(position) = app.state::<PopoverState>().take_pending() else {
-        return;
-    };
-    let Some(app_state) = app.try_state::<crate::app::AppState>() else {
-        return;
-    };
-    let patch = trayci_core::TrayciSettingsPatch {
-        window_position: Some(Some((position.x, position.y))),
-        ..Default::default()
-    };
-    tauri::async_runtime::block_on(async {
-        if let Ok(updated) = app_state.repository.lock().await.update(patch).await {
-            *app_state.settings.lock().expect("settings lock") = updated;
+        let blurred_at = self.state().blurred_at.take();
+        if ui.window().is_visible() {
+            return self.hide();
         }
-    });
+        if hidden_by_this_click(blurred_at, Instant::now()) {
+            return;
+        }
+        self.show(Some(anchor));
+    }
+
+    /// Opens at `anchor`, or at the pointer when there is none.
+    pub fn show(&self, anchor: Option<PhysicalPosition<f64>>) {
+        let Some(ui) = self.ui.upgrade() else {
+            return;
+        };
+        if let Some(anchor) = anchor.or_else(platform::cursor_position) {
+            self.state().anchor = Some(anchor);
+        }
+        self.position();
+        if let Err(error) = ui.window().show() {
+            eprintln!("trayci: could not show the popover: {error}");
+            return;
+        }
+        // A window that was never mapped has no winit window to measure until now.
+        self.position();
+        ui.window()
+            .with_winit_window(|window| window.focus_window());
+    }
+
+    pub fn hide(&self) {
+        let Some(ui) = self.ui.upgrade() else {
+            return;
+        };
+        self.state().focused = false;
+        if let Err(error) = ui.window().hide() {
+            eprintln!("trayci: could not hide the popover: {error}");
+        }
+        ui.global::<Bridge>().invoke_reset_transient();
+    }
+
+    fn blurred(&self) {
+        self.state().blurred_at = Some(Instant::now());
+        self.hide();
+    }
+
+    /// Places the popover at a typed position, the manual counterpart of a drag (issue #39).
+    ///
+    /// The stored value is what was typed; `placement` clamps it to the work area on every use,
+    /// the same way it does for a dragged one.
+    pub fn place(&self, position: (i32, i32)) {
+        self.state().custom = Some(PhysicalPosition::new(position.0, position.1));
+        self.position();
+    }
+
+    /// Drops a saved position and snaps the popover back to the tray.
+    pub fn reanchor(&self) {
+        self.state().custom = None;
+        self.position();
+    }
+
+    fn position(&self) {
+        let Some(ui) = self.ui.upgrade() else {
+            return;
+        };
+        let window = ui.window();
+        let (anchor, custom) = {
+            let state = self.state();
+            (state.anchor, state.custom)
+        };
+        // Nothing to place against yet: leave it where the window manager puts it.
+        let Some(anchor) = anchor.or(custom.map(|c| PhysicalPosition::new(c.x.into(), c.y.into())))
+        else {
+            return;
+        };
+        let point = work_area_point(anchor, custom);
+        let Some(area) = platform::work_area(point).or_else(|| monitor_bounds(&ui, point)) else {
+            return;
+        };
+        let size = window.size();
+        // The master column, not the whole window, is what stays centred on the tray icon, so
+        // opening the detail pane grows to the side instead of sliding the rows out from under
+        // the pointer.
+        let scale = f64::from(ui.global::<ui::Theme>().get_scale());
+        let column = COLUMN_WIDTH * scale * f64::from(window.scale_factor());
+        let (x, y) = placement(
+            anchor,
+            PhysicalSize::new(size.width, size.height),
+            column,
+            custom,
+            area,
+        );
+        window.set_position(slint::PhysicalPosition::new(x, y));
+    }
 }
 
-/// Places the popover at a typed position, the manual counterpart of a drag (issue #39).
-///
-/// The stored value is what was typed; `placement` clamps it to the work area on every use, the
-/// same way it does for a dragged one.
-pub fn place(app: &tauri::AppHandle, position: (i32, i32)) -> tauri::Result<()> {
-    let state = app.state::<PopoverState>();
-    state.set_custom_position(Some(position));
-    match app.get_webview_window(LABEL) {
-        Some(window) => position_window(&window, &state),
-        None => Ok(()),
-    }
+/// The bounds of the monitor holding `point`, for a platform that cannot name its work area.
+fn monitor_bounds(ui: &ui::Popover, point: (f64, f64)) -> Option<Rect> {
+    ui.window()
+        .with_winit_window(|window| {
+            let bounds = |monitor: slint::winit_030::winit::monitor::MonitorHandle| Rect {
+                position: monitor.position(),
+                size: monitor.size(),
+            };
+            window
+                .available_monitors()
+                .map(bounds)
+                .find(|rect| rect.contains(point))
+                .or_else(|| window.primary_monitor().map(bounds))
+        })
+        .flatten()
 }
 
-/// Drops a dragged position and snaps the popover back to the tray.
-pub fn reanchor(app: &tauri::AppHandle) -> tauri::Result<()> {
-    let state = app.state::<PopoverState>();
-    state.set_dragging(false);
-    state.set_custom_position(None);
-    let _ = state.take_pending();
-    match app.get_webview_window(LABEL) {
-        Some(window) => position_window(&window, &state),
-        None => Ok(()),
-    }
-}
-
-pub fn set_scale(app: &tauri::AppHandle, scale: f64) -> tauri::Result<()> {
-    let state = app.state::<PopoverState>();
-    *state.scale.lock().expect("popover scale lock") = scale;
-    match app.get_webview_window(LABEL) {
-        Some(window) => window.set_zoom(scale),
-        None => Ok(()),
-    }
-}
-
-pub fn toggle(
-    app: &tauri::AppHandle,
-    position: PhysicalPosition<f64>,
-    tray_center: Option<PhysicalPosition<f64>>,
-) -> tauri::Result<()> {
-    let Some(window) = app.get_webview_window(LABEL) else {
-        return Ok(());
-    };
-    let blurred_at = app
-        .state::<PopoverState>()
-        .blurred_at
-        .lock()
-        .expect("popover blur lock")
-        .take();
-    if window.is_visible()? {
-        save_position(app);
-        return window.hide();
-    }
-    if hidden_by_this_click(blurred_at, Instant::now()) {
-        return Ok(());
-    }
-    show(app, position, tray_center)
+/// Whether a position the user sets survives. A Wayland compositor places toplevels itself, so
+/// there the coordinates would be written to settings and never applied.
+pub fn positions_are_real() -> bool {
+    !cfg!(target_os = "linux")
+        || std::env::var_os("WAYLAND_DISPLAY").is_none()
+        || std::env::var("SLINT_BACKEND").is_ok_and(|backend| backend.ends_with("x11"))
 }
 
 /// On Windows, a tray press blurs (and so hides) the popover before the click reaches `toggle`.
@@ -273,114 +223,6 @@ const BLUR_GRACE: Duration = Duration::from_millis(300);
 
 fn hidden_by_this_click(blurred_at: Option<Instant>, now: Instant) -> bool {
     blurred_at.is_some_and(|at| now.saturating_duration_since(at) < BLUR_GRACE)
-}
-
-pub fn show(
-    app: &tauri::AppHandle,
-    position: PhysicalPosition<f64>,
-    tray_center: Option<PhysicalPosition<f64>>,
-) -> tauri::Result<()> {
-    let Some(window) = app.get_webview_window(LABEL) else {
-        return Ok(());
-    };
-    let state = app.state::<PopoverState>();
-    // A pointer release lost to a window-manager grab would otherwise leave the popover pinned and
-    // unclosable for the rest of the session.
-    state.set_dragging(false);
-    *state.drag_origin.lock().expect("popover drag origin lock") = None;
-    {
-        let mut anchor = state.anchor.lock().expect("popover anchor lock");
-        *anchor = tray_center.or(Some(position));
-    }
-    position_window(&window, &state)?;
-    window.show()?;
-    // An unmapped window reports no size, so place it again now that the compositor sized it.
-    position_window(&window, &state)?;
-    focus(&window)
-}
-
-/// Takes keyboard focus.
-///
-/// `set_focus` reaches `tao` as `present_with_time(GDK_CURRENT_TIME)`, and a window manager cannot
-/// tie a zero timestamp to a user interaction: muffin refuses it and sets
-/// `_NET_WM_STATE_DEMANDS_ATTENTION` instead, so the popover maps unfocused and neither Escape nor
-/// clicking away closes it until it has been clicked once (issue #38). A timestamp read from the
-/// server is newer than any interaction the window manager has recorded, so the same request is
-/// honoured. Wayland has no server time to read; GNOME 49 does advertise `xdg_activation_v1`, which
-/// this does not try yet.
-#[cfg(target_os = "linux")]
-fn focus(window: &WebviewWindow) -> tauri::Result<()> {
-    let popover = window.clone();
-    window.run_on_main_thread(move || {
-        use gtk::{glib::Cast, prelude::*};
-        let x11 = popover
-            .gtk_window()
-            .ok()
-            .and_then(|gtk| Some((gtk.window()?.downcast::<gdkx11::X11Window>().ok()?, gtk)));
-        let Some((surface, gtk)) = x11 else {
-            let _ = popover.set_focus();
-            return;
-        };
-        // `show()` is queued on GTK's own channel while this arrives through the event loop
-        // proxy, and presenting a window the compositor has not mapped yet does nothing. An idle
-        // callback runs below both, so by then the popover is on screen.
-        gtk::glib::idle_add_local_once(move || {
-            let time = gdkx11::functions::x11_get_server_time(&surface);
-            surface.set_user_time(time);
-            gtk.present_with_time(time);
-        });
-    })
-}
-
-#[cfg(not(target_os = "linux"))]
-fn focus(window: &WebviewWindow) -> tauri::Result<()> {
-    window.set_focus()
-}
-
-pub fn resize(app: &tauri::AppHandle, width: f64, height: f64) -> tauri::Result<()> {
-    let Some(window) = app.get_webview_window(LABEL) else {
-        return Ok(());
-    };
-    let state = app.state::<PopoverState>();
-    let scale = *state.scale.lock().expect("popover scale lock");
-    window.set_size(LogicalSize::new(
-        (width * scale).clamp(MIN_WIDTH, MAX_WIDTH),
-        (height * scale).clamp(MIN_HEIGHT, MAX_HEIGHT),
-    ))?;
-    position_window(&window, &state)
-}
-
-fn position_window(window: &WebviewWindow, state: &PopoverState) -> tauri::Result<()> {
-    // Usage arriving mid-drag resizes the content, and re-placing the window then would snap it
-    // out from under the pointer.
-    if state.is_dragging() {
-        return Ok(());
-    }
-    let custom = *state.custom_position.lock().expect("popover position lock");
-    let anchor = state
-        .anchor
-        .lock()
-        .expect("popover anchor lock")
-        .unwrap_or(window.cursor_position()?);
-    let (x, y) = work_area_point(anchor, custom);
-    let monitor = window
-        .monitor_from_point(x, y)?
-        .or(window.current_monitor()?)
-        .or(window.primary_monitor()?);
-    let Some(monitor) = monitor else {
-        return Ok(());
-    };
-    // The master column, not the whole window, is what stays centred on the tray icon, so opening
-    // the detail pane grows to the side instead of sliding the rows out from under the pointer.
-    let column = COLUMN_WIDTH * *state.scale.lock().expect("popover scale lock");
-    let (x, y) = placement(
-        anchor,
-        window.outer_size()?,
-        column * monitor.scale_factor(),
-        custom,
-        *monitor.work_area(),
-    );
-    window.set_position(PhysicalPosition::new(x, y))
 }
 
 /// The point whose monitor decides which work area the popover is clamped to.
@@ -403,7 +245,7 @@ fn placement(
     size: PhysicalSize<u32>,
     column: f64,
     custom: Option<PhysicalPosition<i32>>,
-    area: tauri::PhysicalRect<i32, u32>,
+    area: Rect,
 ) -> (i32, i32) {
     let left = area.position.x;
     let top = area.position.y;
@@ -437,8 +279,8 @@ fn placement(
 mod tests {
     use super::*;
 
-    fn area(x: i32, y: i32, width: u32, height: u32) -> tauri::PhysicalRect<i32, u32> {
-        tauri::PhysicalRect {
+    fn area(x: i32, y: i32, width: u32, height: u32) -> Rect {
+        Rect {
             position: PhysicalPosition::new(x, y),
             size: PhysicalSize::new(width, height),
         }

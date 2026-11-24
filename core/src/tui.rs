@@ -333,7 +333,7 @@ fn start_fetch(
 ) -> usize {
     let now = now_ms();
     let due = (0..providers.len())
-        .filter(|index| retry_at.get(index).map_or(true, |&at| at <= now))
+        .filter(|index| retry_at.get(index).is_none_or(|&at| at <= now))
         .collect::<Vec<_>>();
     for &index in &due {
         let (providers, cancellation, sender) =
@@ -403,7 +403,7 @@ pub fn run(providers: Vec<Box<dyn UsageProvider>>, settings: &TrayciSettings) ->
     let screen = Screen::enter()?;
     loop {
         // One fetch at a time; the next only once the poll interval has passed since it finished.
-        if pending == 0 && fetched_at.map_or(true, |at| at.elapsed() >= interval) {
+        if pending == 0 && fetched_at.is_none_or(|at| at.elapsed() >= interval) {
             pending = start_fetch(&runtime, &providers, &retry_at, &cancellation, &sender);
             fetched_at = Some(Instant::now());
         }

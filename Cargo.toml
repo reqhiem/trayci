@@ -1,11 +1,11 @@
 [workspace]
 members = ["core"]
-resolver = "2"
+resolver = "3"
 
 [workspace.package]
 version = "0.5.3"
 edition = "2021"
-rust-version = "1.80"
+rust-version = "1.92"
 license = "MIT"
 
 [package]
@@ -16,24 +16,33 @@ rust-version.workspace = true
 license.workspace = true
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+slint-build = "~1.18"
 
 [dependencies]
-tauri = { version = "2", features = ["image-png", "tray-icon"] }
-tauri-plugin-notification = "2"
-tauri-plugin-single-instance = "2"
-tauri-plugin-global-shortcut = "2"
-tokio = { version = "1", features = ["fs", "io-util", "sync"] }
+# `~1.18`: 1.19 needs rustc 1.95. No default features: the default `system-tray` is Slint's own
+# ksni tray, which cannot report where a click happened.
+slint = { version = "~1.18", default-features = false, features = [
+    "std",
+    "compat-1-2",
+    "accessibility",
+    "renderer-femtovg",
+    "renderer-software",
+    "unstable-winit-030",
+] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
 trayci-core = { path = "core" }
 
-# Already in the tree through tauri; named here only to reach `present_with_time` and
-# `set_user_time`, which `WebviewWindow::set_focus` cannot supply a timestamp for (issue #38).
 [target.'cfg(target_os = "linux")'.dependencies]
-gtk = "0.18"
-gdkx11 = "0.18"
+# `async-io`, not the default `tokio`: zbus runs on one runtime for the whole tree, and Slint's
+# accessibility bridge (accesskit_unix) only builds for async-io. ksni drives itself on its own
+# executor thread, so tokio tasks can still await it.
+ksni = { version = "0.3", default-features = false, features = ["async-io"] }
+notify-rust = "4"
+# Already in the tree through Slint; decodes the tray icon for ksni.
+png = "0.18"
 
-# Both already in the tree through tauri and portable-pty: `AttachConsole` for CLI output from the
-# GUI-subsystem exe, and the HKCU Run value for start at login (issue #52).
+# `AttachConsole` for CLI output from the GUI-subsystem exe, and the HKCU Run value for start at
+# login (issue #52).
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
 winreg = "0.10"
