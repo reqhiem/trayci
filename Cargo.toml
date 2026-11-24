@@ -31,6 +31,8 @@ slint = { version = "~1.18", default-features = false, features = [
 ] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
 trayci-core = { path = "core" }
+# Ctrl+Alt+U (Windows uses the same crate).
+global-hotkey = "0.8"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # `async-io`, not the default `tokio`: zbus runs on one runtime for the whole tree, and Slint's

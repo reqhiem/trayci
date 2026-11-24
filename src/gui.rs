@@ -1,7 +1,7 @@
 //! The tray app: the usage service on a tokio runtime, the Slint popover on this thread, and the
 //! tray icon between them.
 use crate::{
-    autostart,
+    autostart, hotkey,
     popover::{self, Popover},
     single_instance, tray,
     ui::{self, Bridge},
@@ -97,6 +97,7 @@ pub fn run(runtime: Runtime) -> Result<(), Box<dyn Error>> {
         }
     });
     tray::spawn(runtime.handle(), popover.clone(), tooltip);
+    let _shortcut = hotkey::register(popover.clone());
     instance.serve({
         let popover = popover.clone();
         move || {

@@ -19,6 +19,8 @@ use std::{
 mod linux;
 #[cfg(target_os = "linux")]
 use linux as platform;
+#[cfg(target_os = "linux")]
+pub use linux::is_x11;
 #[cfg(windows)]
 mod windows;
 #[cfg(windows)]
