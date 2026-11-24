@@ -1,0 +1,35 @@
+// The Figma variables, dark and light.
+import { Palette } from "std-widgets.slint";
+import { Bridge } from "bridge.slint";
+
+export global Theme {
+    out property <bool> dark: Bridge.settings.theme == "dark" ? true
+        : Bridge.settings.theme == "light" ? false
+        : Palette.color-scheme == ColorScheme.dark;
+    // Settings arrive from Rust after the first frame; a zero scale would collapse every length.
+    out property <float> scale: Bridge.settings.font-scale > 0 ? Bridge.settings.font-scale : 1;
+
+    out property <color> paper: dark ? #f6f4ef : #16191d;
+    out property <color> ink: dark ? #0b0f14 : #f6f4ef;
+    out property <color> sunken: dark ? #090c10 : #edeae3;
+    out property <color> surface: dark ? #161b22 : #fffefb;
+    out property <color> muted: dark ? #9aa0a8 : #5a6169;
+    out property <color> accent: dark ? #ff5a36 : #cc3c19;
+    out property <color> accent-line: dark ? rgba(255, 90, 54, 0.45) : rgba(204, 60, 25, 0.5);
+    out property <color> accent-fill: dark ? rgba(255, 90, 54, 0.1) : rgba(204, 60, 25, 0.08);
+    out property <color> danger: dark ? #ffb3a2 : #9f2d12;
+    out property <color> line: dark ? rgba(246, 244, 239, 0.09) : rgba(11, 15, 20, 0.14);
+    out property <color> tint-soft: dark ? rgba(246, 244, 239, 0.07) : rgba(11, 15, 20, 0.04);
+    out property <color> tint: dark ? rgba(246, 244, 239, 0.14) : rgba(11, 15, 20, 0.07);
+    out property <color> tint-strong: dark ? rgba(246, 244, 239, 0.22) : rgba(11, 15, 20, 0.15);
+    // Severity, by use: neutral until 50%, then amber, orange at 85%, red at 90% (issue #66).
+    out property <color> meter-low: dark ? rgba(246, 244, 239, 0.55) : rgba(22, 25, 29, 0.55);
+    out property <color> meter-medium: dark ? #f5a524 : #c27c0e;
+    out property <color> meter-high: dark ? #f97316 : #d9480f;
+    out property <color> meter-critical: dark ? #ef4444 : #dc2626;
+    out property <color> critical: dark ? #ff7a6b : #b91c1c;
+    out property <color> warning: dark ? #f5b84a : #9a5b00;
+    out property <color> claude: accent;
+    out property <color> codex: paper;
+    out property <color> antigravity: dark ? #7da7ff : #3b63c4;
+}

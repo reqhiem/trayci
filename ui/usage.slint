@@ -1,0 +1,159 @@
+// Placeholder for the usage view (W1): proves the contract, not the design.
+import { Bridge, MeterView, Severity } from "bridge.slint";
+import { Theme } from "theme.slint";
+
+component Label inherits Text {
+    color: Theme.paper;
+    vertical-alignment: center;
+}
+
+component Meter inherits HorizontalLayout {
+    in property <MeterView> meter;
+    spacing: 6px;
+    Label {
+        text: meter.row-label;
+        width: 96px * Theme.scale;
+        color: Theme.muted;
+    }
+    Rectangle {
+        height: 4px;
+        background: Theme.tint;
+        Rectangle {
+            x: 0;
+            width: parent.width * meter.used / 100;
+            background: meter.severity == Severity.critical ? Theme.meter-critical
+                : meter.severity == Severity.high ? Theme.meter-high
+                : meter.severity == Severity.medium ? Theme.meter-medium
+                : Theme.meter-low;
+        }
+    }
+    Label {
+        text: meter.percent;
+        width: 36px * Theme.scale;
+        horizontal-alignment: right;
+    }
+}
+
+export component UsageView inherits Rectangle {
+    out property <length> master-height: master.preferred-height;
+    property <string> shown: Bridge.pinned != "" ? Bridge.pinned : Bridge.hovered;
+
+    HorizontalLayout {
+        alignment: start;
+        master := VerticalLayout {
+            width: 360px * Theme.scale;
+            alignment: start;
+            HorizontalLayout {
+                height: 32px * Theme.scale;
+                padding-left: 12px;
+                padding-right: 8px;
+                spacing: 8px;
+                TouchArea {
+                    pointer-event(event) => {
+                        if event.kind == PointerEventKind.down {
+                            Bridge.begin-drag();
+                        }
+                    }
+                    Label {
+                        x: 0;
+                        text: "Usage";
+                        font-weight: 600;
+                    }
+                }
+                Label {
+                    text: Bridge.refreshing ? "Refreshing…" : Bridge.refreshed-ago;
+                    color: Theme.muted;
+                }
+                TouchArea {
+                    width: 24px * Theme.scale;
+                    clicked => { Bridge.refresh(); }
+                    Label { text: "↻"; }
+                }
+                TouchArea {
+                    width: 24px * Theme.scale;
+                    clicked => { Bridge.settings-open = true; }
+                    Label { text: "⚙"; }
+                }
+            }
+            if Bridge.error != "" : Label {
+                text: Bridge.error;
+                color: Theme.danger;
+                wrap: word-wrap;
+            }
+            for provider in Bridge.providers : TouchArea {
+                clicked => { Bridge.pinned = Bridge.pinned == provider.id ? "" : provider.id; }
+                changed has-hover => {
+                    if self.has-hover {
+                        Bridge.hovered = provider.id;
+                    } else if Bridge.hovered == provider.id {
+                        Bridge.hovered = "";
+                    }
+                }
+                VerticalLayout {
+                    padding: 12px;
+                    spacing: 4px;
+                    HorizontalLayout {
+                        spacing: 6px;
+                        Label {
+                            text: provider.name;
+                            font-weight: 600;
+                            color: provider.id == "claude" ? Theme.claude
+                                : provider.id == "antigravity" ? Theme.antigravity
+                                : Theme.codex;
+                        }
+                        Label {
+                            text: provider.plan;
+                            color: Theme.muted;
+                        }
+                        Label {
+                            text: provider.summary;
+                            horizontal-alignment: right;
+                            color: provider.summary-stale ? Theme.warning : Theme.muted;
+                        }
+                    }
+                    if provider.failed : Label {
+                        text: provider.message;
+                        color: Theme.muted;
+                    }
+                    if !Bridge.settings.compact : VerticalLayout {
+                        spacing: 4px;
+                        for meter in provider.meters : Meter {
+                            meter: meter;
+                        }
+                    }
+                    if Bridge.settings.compact && provider.has-tightest : Meter {
+                        meter: provider.tightest;
+                    }
+                }
+            }
+        }
+        if shown != "" : Rectangle {
+            width: 300px * Theme.scale;
+            background: Theme.surface;
+            VerticalLayout {
+                alignment: start;
+                padding: 12px;
+                spacing: 6px;
+                for provider in Bridge.providers : VerticalLayout {
+                    visible: provider.id == root.shown;
+                    height: self.visible ? self.preferred-height : 0;
+                    spacing: 4px;
+                    Label {
+                        text: provider.name + " · " + provider.age + " · " + provider.source;
+                    }
+                    for meter in provider.meters : VerticalLayout {
+                        Label {
+                            text: meter.detail-label + (meter.resets != "" ? " · " + meter.resets : "");
+                        }
+                        Meter { meter: meter; }
+                    }
+                    if provider.error != "" : Label {
+                        text: provider.error;
+                        color: Theme.danger;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+        }
+    }
+}

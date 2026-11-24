@@ -1,0 +1,47 @@
+import "fonts/SpaceGrotesk.ttf";
+import { Bridge } from "bridge.slint";
+import { Theme } from "theme.slint";
+import { UsageView } from "usage.slint";
+import { SettingsPage } from "settings.slint";
+
+export { Bridge, Severity, MeterView, ProviderView, ProviderSetting, SettingsView } from "bridge.slint";
+export { Theme } from "theme.slint";
+
+export component Popover inherits Window {
+    no-frame: true;
+    always-on-top: true;
+    title: "Trayci";
+    background: Theme.ink;
+    default-font-family: "Space Grotesk";
+    default-font-size: 12px * Theme.scale;
+
+    out property <bool> detail-open: !Bridge.settings-open && (Bridge.pinned != "" || Bridge.hovered != "");
+
+    // The master column is 360px and the detail pane adds 300 to its right (Figma). The window is
+    // as tall as the master column; a taller detail pane has to fit or scroll inside it.
+    width: (detail-open ? 660px : 360px) * Theme.scale;
+    height: Bridge.settings-open ? settings.preferred-height : usage.master-height;
+
+    forward-focus: scope;
+
+    scope := FocusScope {
+        key-pressed(event) => {
+            if event.text != Key.Escape {
+                return reject;
+            }
+            if Bridge.pinned != "" {
+                Bridge.pinned = "";
+            } else {
+                Bridge.hide();
+            }
+            accept
+        }
+
+        usage := UsageView {
+            visible: !Bridge.settings-open;
+        }
+        settings := SettingsPage {
+            visible: Bridge.settings-open;
+        }
+    }
+}

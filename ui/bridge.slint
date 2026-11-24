@@ -1,0 +1,82 @@
+// The contract between the Rust side and the views. Rust fills everything already formatted and
+// sorted (src/view.rs), so the views only lay it out.
+
+export enum Severity { low, medium, high, critical }
+
+export struct MeterView {
+    id: string,
+    row-label: string,      // "Gemini 5h", "Claude/GPT wk", "5h", "Fable"
+    detail-label: string,   // "Gemini · Weekly", "5h", "Weekly"
+    used: float,            // 0..100 clamped, drives the bar width
+    percent: string,        // "88%" in the user's used/remaining mode
+    severity: Severity,     // always by use, on the rounded value
+    resets: string,         // "resets in 3h 54m", or "" when unknown
+    models: string,         // pooled models tooltip, or ""
+    wide: bool,             // row label longer than 14 chars: takes the whole line
+}
+
+export struct ProviderView {
+    id: string,             // "claude" | "codex" | "antigravity"
+    name: string,
+    plan: string,
+    loading: bool,          // status == fetching
+    failed: bool,           // has no windows, show `message`
+    message: string,        // "Loading…", error text or "Usage unavailable"
+    summary: string,        // "3h 54m" (a countdown) or "Updated 2h ago" (when stale)
+    summary-stale: bool,
+    meters: [MeterView],
+    tightest: MeterView,
+    has-tightest: bool,
+    age: string,            // "Updated 1m ago"
+    source: string,         // "via API" …
+    error: string,          // inline error in the detail pane
+}
+
+export struct ProviderSetting { id: string, label: string, enabled: bool }
+
+export struct SettingsView {
+    start-on-login: bool,
+    refresh-on-resume: bool,
+    poll-minutes: int,
+    theme: string,          // "system" | "light" | "dark"
+    font-scale: float,      // 0.9 | 1 | 1.15 | 1.3
+    show-remaining: bool,
+    compact: bool,
+    notify-50: bool,
+    notify-85: bool,
+    notify-90: bool,
+    notify-reset: bool,
+    providers: [ProviderSetting],   // already in the user's order
+    has-position: bool,
+    position-x: int,
+    position-y: int,
+    positions-real: bool,   // false on Wayland: the Position row is disabled
+}
+
+export global Bridge {
+    in property <[ProviderView]> providers;   // already sorted (provider order, then highest use)
+    in property <bool> refreshing;
+    in property <string> refreshed-ago;       // for the refresh tooltip
+    in property <SettingsView> settings;
+    in-out property <string> error;           // banner text, "" = none
+    // The views' own state. Rust never sets it, only clears it through reset-transient.
+    in-out property <bool> settings-open;
+    in-out property <string> pinned;          // provider id whose detail pane is pinned, or ""
+    in-out property <string> hovered;         // provider id under the pointer, or ""
+    callback refresh();
+    callback update-settings(SettingsView);   // the whole edited struct; Rust diffs it into a patch
+    callback set-position(int, int);
+    callback reset-position();
+    callback hide();
+    callback quit();
+    callback begin-drag();                    // header pointer-down; W3 implements the move
+    callback reset-transient();               // Rust → UI on hide: clear hover/pin, back to usage
+
+    // Implemented here because a component cannot handle a global's callback. Rust must invoke it,
+    // never set a handler of its own, which would replace this one.
+    reset-transient => {
+        self.settings-open = false;
+        self.pinned = "";
+        self.hovered = "";
+    }
+}
