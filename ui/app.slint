@@ -1,10 +1,11 @@
 import "fonts/SpaceGrotesk.ttf";
 import { Bridge } from "bridge.slint";
 import { Theme } from "theme.slint";
-import { UsageView } from "usage.slint";
+import { Topbar } from "topbar.slint";
+import { UsageView, DetailPane } from "usage.slint";
 import { SettingsPage } from "settings.slint";
 
-export { Bridge, Severity, MeterView, ProviderView, ProviderSetting, SettingsView } from "bridge.slint";
+export { Bridge, Severity, MeterView, MeterLine, ProviderView, ProviderSetting, SettingsView } from "bridge.slint";
 export { Theme } from "theme.slint";
 
 export component Popover inherits Window {
@@ -20,7 +21,7 @@ export component Popover inherits Window {
     // The master column is 360px and the detail pane adds 300 to its right (Figma). The window is
     // as tall as the master column; a taller detail pane has to fit or scroll inside it.
     width: (detail-open ? 660px : 360px) * Theme.scale;
-    height: Bridge.settings-open ? settings.preferred-height : usage.master-height;
+    height: topbar.height + (Bridge.settings-open ? settings.preferred-height : usage.master-height);
 
     forward-focus: scope;
 
@@ -37,11 +38,43 @@ export component Popover inherits Window {
             accept
         }
 
-        usage := UsageView {
-            visible: !Bridge.settings-open;
+        // Hover is only dropped when the pointer leaves the whole popover, not a row.
+        TouchArea {
+            changed has-hover => {
+                if !self.has-hover {
+                    Bridge.hovered = "";
+                }
+            }
+
+            // `x: 0`: an element narrower than its parent is centred by default, and the master
+            // column must not move when the detail pane widens the window.
+            topbar := Topbar {
+                x: 0;
+                y: 0;
+                width: 360px * Theme.scale;
+            }
+            usage := UsageView {
+                x: 0;
+                y: topbar.height;
+                width: 360px * Theme.scale;
+                visible: !Bridge.settings-open;
+            }
+            settings := SettingsPage {
+                x: 0;
+                y: topbar.height;
+                width: 360px * Theme.scale;
+                visible: Bridge.settings-open;
+            }
+            if root.detail-open : DetailPane {
+                x: 360px * Theme.scale;
+                width: 300px * Theme.scale;
+            }
         }
-        settings := SettingsPage {
-            visible: Bridge.settings-open;
+
+        // The popover's outline (Figma screens).
+        Rectangle {
+            border-width: 1px;
+            border-color: Theme.line;
         }
     }
 }

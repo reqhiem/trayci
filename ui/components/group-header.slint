@@ -1,0 +1,63 @@
+// Figma GroupHeader (10:195): the summary of a collapsible settings group.
+import { Theme } from "../theme.slint";
+
+export component GroupHeader inherits Rectangle {
+    in property <string> title;
+    in-out property <bool> open;
+
+    height: 28px * Theme.scale;
+
+    accessible-role: button;
+    accessible-label: root.title;
+    accessible-expandable: true;
+    accessible-expanded: root.open;
+    accessible-action-default => { root.open = !root.open; }
+    accessible-action-expand => { root.open = true; }
+
+    HorizontalLayout {
+        padding-left: 10px * Theme.scale;
+        padding-right: self.padding-left;
+        alignment: space-between;
+        Text {
+            text: root.title.to-uppercase();
+            font-size: 9px * Theme.scale;
+            font-weight: 700;
+            letter-spacing: 0.9px * Theme.scale;
+            color: Theme.muted;
+            vertical-alignment: center;
+        }
+        // Figma Chevron (10:67): a stroked corner in a 6×6 box that it overflows sideways.
+        Rectangle {
+            width: 6px * Theme.scale;
+            Path {
+                x: -1.243px * Theme.scale;
+                y: (parent.height - self.height) / 2;
+                width: 8.486px * Theme.scale;
+                height: 6px * Theme.scale;
+                viewbox-width: 8.486;
+                viewbox-height: 6;
+                commands: root.open ? "M0.495 4.495 L4.243 0.747 L7.991 4.495" : "M7.991 0.505 L4.243 4.253 L0.495 0.505";
+                stroke: Theme.muted;
+                stroke-width: 1.4px * Theme.scale;
+            }
+        }
+    }
+    focus := FocusScope {
+        focus-on-click: false;
+        key-pressed(event) => {
+            if event.text == Key.Space || event.text == Key.Return {
+                root.open = !root.open;
+                return accept;
+            }
+            reject
+        }
+    }
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.open = !root.open; }
+    }
+    if focus.has-focus: Rectangle {
+        border-width: 2px;
+        border-color: Theme.accent;
+    }
+}

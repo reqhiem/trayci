@@ -1,0 +1,27 @@
+// Figma SettingRow (10:246): one line of a group, its label first and its control last.
+import { Theme } from "../theme.slint";
+
+export component RowLabel inherits Text {
+    color: Theme.paper;
+    font-size: 11px * Theme.scale;
+    vertical-alignment: center;
+    horizontal-stretch: 1;
+}
+
+export component SettingRow inherits Rectangle {
+    min-height: 38px * Theme.scale;
+    HorizontalLayout {
+        padding-left: 10px * Theme.scale;
+        padding-right: self.padding-left;
+        // Below the 1px top border, as in Figma's border-box rows.
+        padding-top: 8px * Theme.scale + 1px;
+        padding-bottom: 8px * Theme.scale;
+        spacing: 14px * Theme.scale;
+        @children
+    }
+    Rectangle {
+        y: 0;
+        height: 1px;
+        background: Theme.line;
+    }
+}

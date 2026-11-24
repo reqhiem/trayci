@@ -1,0 +1,137 @@
+// The header above both views (Figma PopoverHeader for usage, Topbar view=settings). Its
+// background is the drag handle.
+import { Bridge, SettingsView } from "bridge.slint";
+import { Theme } from "theme.slint";
+import { IconButton, TipBox } from "components/icon-button.slint";
+
+export component Topbar inherits Rectangle {
+    property <SettingsView> edited;
+
+    // Figma draws the usage header 32px tall and the settings one 34px, hairline included.
+    height: (Bridge.settings-open ? 33px : 31px) * Theme.scale + 1px;
+
+    TouchArea {
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down && event.button == PointerEventButton.left {
+                Bridge.begin-drag();
+            }
+        }
+    }
+
+    if !Bridge.settings-open : HorizontalLayout {
+        height: parent.height - 1px;
+        // Centres the 24px buttons on the 31px line.
+        padding-top: 3.5px * Theme.scale;
+        padding-bottom: 3.5px * Theme.scale;
+        padding-left: 12px * Theme.scale;
+        padding-right: 6px * Theme.scale;
+        spacing: 2px * Theme.scale;
+        Text {
+            text: "Usage";
+            color: Theme.paper;
+            font-size: 13px * Theme.scale;
+            font-weight: 500;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            accessible-role: none;
+        }
+        IconButton {
+            icon: @image-url("icons/density.svg");
+            label: "Compact view";
+            tip: Bridge.settings.compact ? "Detailed view" : "Compact view";
+            pressed: Bridge.settings.compact;
+            accessible-checkable: true;
+            accessible-checked: Bridge.settings.compact;
+            clicked => {
+                root.edited = Bridge.settings;
+                root.edited.compact = !root.edited.compact;
+                Bridge.update-settings(root.edited);
+            }
+        }
+        IconButton {
+            icon: @image-url("icons/refresh.svg");
+            label: "Refresh usage";
+            tip: Bridge.refreshed-ago != "" ? "Refresh · " + Bridge.refreshed-ago : "Refresh";
+            enabled: !Bridge.refreshing;
+            spinning: Bridge.refreshing;
+            clicked => {
+                Bridge.refresh();
+            }
+        }
+        IconButton {
+            icon: @image-url("icons/gear.svg");
+            label: "Settings";
+            tip: "Settings";
+            clicked => {
+                Bridge.settings-open = true;
+            }
+        }
+    }
+
+    if Bridge.settings-open : HorizontalLayout {
+        height: parent.height - 1px;
+        padding-top: 4.5px * Theme.scale;
+        padding-bottom: 4.5px * Theme.scale;
+        padding-left: 8px * Theme.scale;
+        padding-right: 8px * Theme.scale;
+        spacing: 6px * Theme.scale;
+        back := TouchArea {
+            width: 16px * Theme.scale;
+            accessible-role: button;
+            accessible-label: "Back to usage";
+            accessible-action-default => {
+                Bridge.settings-open = false;
+            }
+            clicked => {
+                Bridge.settings-open = false;
+            }
+            Image {
+                width: 6.24px * Theme.scale;
+                height: 8.49px * Theme.scale;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                source: @image-url("icons/back.svg");
+                colorize: Theme.paper;
+                accessible-role: none;
+            }
+        }
+        Text {
+            text: "Settings";
+            color: Theme.paper;
+            font-size: 12px * Theme.scale;
+            font-weight: 650;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            accessible-role: none;
+        }
+        close := TouchArea {
+            width: 23px * Theme.scale;
+            accessible-role: button;
+            accessible-label: "Back to usage";
+            accessible-action-default => {
+                Bridge.settings-open = false;
+            }
+            clicked => {
+                Bridge.settings-open = false;
+            }
+            Text {
+                text: "×";
+                color: close.has-hover ? Theme.paper : Theme.muted;
+                font-size: 13px * Theme.scale;
+                letter-spacing: 1px * Theme.scale;
+                accessible-role: none;
+            }
+            Tooltip {
+                TipBox {
+                    text: "Back to usage";
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.line;
+    }
+}

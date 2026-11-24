@@ -20,7 +20,7 @@ pub fn register(popover: Popover) -> Option<GlobalHotKeyManager> {
         .map_err(|error| eprintln!("trayci: no Ctrl+Alt+U shortcut: {error}"))
         .ok()?;
     GlobalHotKeyEvent::set_event_handler(Some(move |event: GlobalHotKeyEvent| {
-        if event.state == HotKeyState::Pressed {
+        if event.id == shortcut.id() && event.state == HotKeyState::Pressed {
             let popover = popover.clone();
             let _ = slint::invoke_from_event_loop(move || popover.toggle(None));
         }

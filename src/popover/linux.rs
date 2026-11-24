@@ -203,10 +203,13 @@ impl X11 {
             .ok()?;
         self.connection.flush().ok()?;
         loop {
-            if let Event::PropertyNotify(event) = self.connection.wait_for_event().ok()? {
-                if event.window == self.clock {
-                    return Some(event.time);
+            match self.connection.wait_for_event().ok()? {
+                Event::PropertyNotify(event) if event.window == self.clock => {
+                    return Some(event.time)
                 }
+                // The change failed, so no notify is coming.
+                Event::Error(_) => return None,
+                _ => {}
             }
         }
     }
